@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.Completion;
@@ -15,7 +14,6 @@ using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Test.Utilities;
 using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data;
 using Roslyn.Test.Utilities;
-using Roslyn.Utilities;
 using Xunit;
 using RoslynTrigger = Microsoft.CodeAnalysis.Completion.CompletionTrigger;
 
@@ -29,7 +27,7 @@ public class CrefCompletionProviderTests : AbstractCSharpCompletionProviderTests
 
     private protected override async Task VerifyWorkerAsync(string code, int position, string expectedItemOrNull,
         string expectedDescriptionOrNull, SourceCodeKind sourceCodeKind, bool usePreviousCharAsTrigger, char? deletedCharTrigger,
-        bool checkForAbsence, int? glyph, int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
+        bool checkForAbsence, Glyph? glyph, int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
         string displayTextPrefix, string? inlineDescription = null, bool? isComplexTextEdit = null,
         List<CompletionFilter>? matchingFilters = null, CompletionItemFlags? flags = null,
         CompletionOptions? options = null, bool skipSpeculation = false)

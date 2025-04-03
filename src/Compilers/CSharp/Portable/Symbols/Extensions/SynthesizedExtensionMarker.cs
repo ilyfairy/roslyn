@@ -5,6 +5,7 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.PooledObjects;
 
 namespace Microsoft.CodeAnalysis.CSharp.Symbols
 {
@@ -30,9 +31,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             return;
         }
 
-        private static DeclarationModifiers GetDeclarationModifiers() => DeclarationModifiers.Public | DeclarationModifiers.Static;
+        private static DeclarationModifiers GetDeclarationModifiers() => DeclarationModifiers.Private | DeclarationModifiers.Static;
 
-        internal override bool HasSpecialName => true; // PROTOTYPE: reconcile with spec
+        internal override bool HasSpecialName => true; // Tracked by https://github.com/dotnet/roslyn/issues/76130 : reconcile with spec
 
         internal override void GenerateMethodBody(TypeCompilationState compilationState, BindingDiagnosticBag diagnostics)
         {
@@ -72,8 +73,49 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     diagnostics.Add(ErrorCode.ERR_ReceiverParameterOnlyOne, parameterList.Parameters[parameterIndex].GetLocation());
                 }
 
-                return ParameterHelpers.MakeExtensionReceiverParameter(withTypeParametersBinder: signatureBinder, owner: this, parameterList, diagnostics);
+                ParameterSymbol? parameter = ParameterHelpers.MakeExtensionReceiverParameter(withTypeParametersBinder: signatureBinder, owner: this, parameterList, diagnostics);
+
+                if (parameter is { })
+                {
+                    checkUnderspecifiedGenericExtension(parameter, ContainingType.TypeParameters, diagnostics);
+                }
+
+                if (parameter is { Name: var name } && name != "" &&
+                    ContainingType.TypeParameters.Any(static (p, name) => p.Name == name, name))
+                {
+                    diagnostics.Add(ErrorCode.ERR_ReceiverParameterSameNameAsTypeParameter, parameter.GetFirstLocation(), name);
+                }
+
+                return parameter;
             }
+
+            static void checkUnderspecifiedGenericExtension(ParameterSymbol parameter, ImmutableArray<TypeParameterSymbol> typeParameters, BindingDiagnosticBag diagnostics)
+            {
+                var underlyingType = parameter.Type;
+                var usedTypeParameters = PooledHashSet<TypeParameterSymbol>.GetInstance();
+                underlyingType.VisitType(collectTypeParameters, arg: usedTypeParameters);
+
+                foreach (var typeParameter in typeParameters)
+                {
+                    if (!usedTypeParameters.Contains(typeParameter))
+                    {
+                        diagnostics.Add(ErrorCode.ERR_UnderspecifiedExtension, parameter.GetFirstLocation(), underlyingType, typeParameter);
+                    }
+                }
+
+                usedTypeParameters.Free();
+            }
+
+            static bool collectTypeParameters(TypeSymbol type, PooledHashSet<TypeParameterSymbol> typeParameters, bool ignored)
+            {
+                if (type is TypeParameterSymbol typeParameter)
+                {
+                    typeParameters.Add(typeParameter);
+                }
+
+                return false;
+            }
+
         }
     }
 }

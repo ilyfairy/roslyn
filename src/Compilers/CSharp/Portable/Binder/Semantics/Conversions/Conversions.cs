@@ -330,10 +330,24 @@ namespace Microsoft.CodeAnalysis.CSharp
                         Debug.Assert((object)method != null);
                         if (resolution.MethodGroup.IsExtensionMethodGroup)
                         {
-                            Debug.Assert(method.IsExtensionMethod);
+                            Debug.Assert(method.IsExtensionMethod || method.GetIsNewExtensionMember());
 
-                            var thisParameter = method.Parameters[0];
-                            if (!thisParameter.Type.IsReferenceType)
+                            ParameterSymbol thisParameter;
+
+                            if (method.IsExtensionMethod)
+                            {
+                                thisParameter = method.Parameters[0];
+                            }
+                            else if (method.IsStatic)
+                            {
+                                thisParameter = null;
+                            }
+                            else
+                            {
+                                thisParameter = method.ContainingType.ExtensionParameter;
+                            }
+
+                            if (thisParameter?.Type.IsReferenceType == false)
                             {
                                 // Extension method '{0}' defined on value type '{1}' cannot be used to create delegates
                                 diagnostics.Add(
@@ -454,9 +468,12 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             MethodSymbol method = result.BestResult.Member;
 
-            if (methodGroup.IsExtensionMethodGroup && !method.Parameters[0].Type.IsReferenceType)
+            if (methodGroup.IsExtensionMethodGroup)
             {
-                return Conversion.NoConversion;
+                if (!(method.GetIsNewExtensionMember() && method.IsStatic) && !Binder.GetReceiverParameter(method).Type.IsReferenceType)
+                {
+                    return Conversion.NoConversion;
+                }
             }
 
             //cannot capture stack-only types.
@@ -481,9 +498,10 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             // NOTE: Delegate type compatibility is important, but is not part of the existence check.
 
-            Debug.Assert(method.ParameterCount == parameterCount + (methodGroup.IsExtensionMethodGroup ? 1 : 0));
+            bool isExtensionMethod = methodGroup.IsExtensionMethodGroup && !method.GetIsNewExtensionMember();
+            Debug.Assert(method.ParameterCount == parameterCount + (isExtensionMethod ? 1 : 0));
 
-            return new Conversion(ConversionKind.MethodGroup, method, methodGroup.IsExtensionMethodGroup);
+            return new Conversion(ConversionKind.MethodGroup, method, isExtensionMethod: isExtensionMethod);
         }
 
         public override Conversion GetStackAllocConversion(BoundStackAllocArrayCreation sourceExpression, TypeSymbol destination, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)

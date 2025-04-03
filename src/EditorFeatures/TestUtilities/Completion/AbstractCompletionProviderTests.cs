@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncCompletion;
+using Microsoft.CodeAnalysis.Editor.Shared.Extensions;
 using Microsoft.CodeAnalysis.Editor.UnitTests.CodeActions;
 using Microsoft.CodeAnalysis.LanguageService;
 using Microsoft.CodeAnalysis.Shared.Extensions;
@@ -119,7 +120,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private protected abstract Task BaseVerifyWorkerAsync(
             string code, int position, string expectedItemOrNull, string expectedDescriptionOrNull,
             SourceCodeKind sourceCodeKind, bool usePreviousCharAsTrigger, char? deletedCharTrigger, bool checkForAbsence,
-            int? glyph, int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
+            Glyph? glyph, int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription, bool? isComplexTextEdit,
             List<CompletionFilter> matchingFilters, CompletionItemFlags? flags, CompletionOptions options,
             bool skipSpeculation = false);
@@ -141,7 +142,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
             Document document, int position, string expectedItemOrNull,
             string expectedDescriptionOrNull, bool usePreviousCharAsTrigger,
             char? deletedCharTrigger,
-            bool checkForAbsence, int? glyph, int? matchPriority,
+            bool checkForAbsence, Glyph? glyph, int? matchPriority,
             bool? hasSuggestionModeItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription,
             bool? isComplexTextEdit,
@@ -253,7 +254,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
                         return false;
                     if (result.ExpectedDescription != null && completionService.GetDescriptionAsync(document, c, options, displayOptions).Result.Text != result.ExpectedDescription)
                         return false;
-                    if (result.Glyph.HasValue && !c.Tags.SequenceEqual(GlyphTags.GetTags((Glyph)result.Glyph.Value)))
+                    if (result.Glyph.HasValue && !c.Tags.SequenceEqual(GlyphTags.GetTags(result.Glyph.Value)))
                         return false;
                     if (result.MatchPriority.HasValue && c.Rules.MatchPriority != result.MatchPriority.Value)
                         return false;
@@ -273,7 +274,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
             string Name,
             bool IsAbsent,
             string ExpectedDescription = null,
-            int? Glyph = null,
+            Glyph? Glyph = null,
             int? MatchPriority = null,
             string DisplayTextSuffix = null,
             string DisplayTextPrefix = null,
@@ -311,7 +312,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private async Task VerifyAsync(
             string markup, string expectedItemOrNull, string expectedDescriptionOrNull,
             SourceCodeKind? sourceCodeKind, bool usePreviousCharAsTrigger, char? deletedCharTrigger, bool checkForAbsence,
-            int? glyph, int? matchPriority, bool? hasSuggestionModeItem, string displayTextSuffix,
+            Glyph? glyph, int? matchPriority, bool? hasSuggestionModeItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription, bool? isComplexTextEdit,
             List<CompletionFilter> matchingFilters, CompletionItemFlags? flags, CompletionOptions options, bool skipSpeculation = false)
         {
@@ -429,7 +430,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private protected async Task VerifyItemExistsAsync(
             string markup, string expectedItem, string expectedDescriptionOrNull = null,
             SourceCodeKind? sourceCodeKind = null, bool usePreviousCharAsTrigger = false, char? deletedCharTrigger = null,
-            int? glyph = null, int? matchPriority = null, bool? hasSuggestionModeItem = null,
+            Glyph? glyph = null, int? matchPriority = null, bool? hasSuggestionModeItem = null,
             string displayTextSuffix = null, string displayTextPrefix = null, string inlineDescription = null,
             bool? isComplexTextEdit = null, List<CompletionFilter> matchingFilters = null,
             CompletionItemFlags? flags = null, CompletionOptions options = null, bool skipSpeculation = false)
@@ -505,7 +506,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
             string expectedItemOrNull, string expectedDescriptionOrNull,
             SourceCodeKind sourceCodeKind,
             bool usePreviousCharAsTrigger, char? deletedCharTrigger, bool checkForAbsence,
-            int? glyph, int? matchPriority, bool? hasSuggestionModeItem,
+            Glyph? glyph, int? matchPriority, bool? hasSuggestionModeItem,
             string displayTextSuffix, string displayTextPrefix,
             string inlineDescription, bool? isComplexTextEdit,
             List<CompletionFilter> matchingFilters, CompletionItemFlags? flags,
@@ -636,7 +637,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         {
             using var workspaceFixture = GetOrCreateWorkspaceFixture();
 
-            MarkupTestFile.GetPosition(expectedCodeAfterCommit, out var actualExpectedCode, out int expectedCaretPosition);
+            MarkupTestFile.GetPositionAndSpan(expectedCodeAfterCommit, out var actualExpectedCode, out var expectedCaretPosition, out TextSpan? expectedSelectionSpan);
 
             var options = GetCompletionOptions();
 
@@ -661,10 +662,15 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
             var textBuffer = workspaceFixture.Target.CurrentDocument.GetTextBuffer();
 
             var actualCodeAfterCommit = textBuffer.CurrentSnapshot.AsText().ToString();
+            var selectionSpan = commit.NewSelection ?? textView.Selection.StreamSelectionSpan.SnapshotSpan.Span.ToTextSpan();
             var caretPosition = commit.NewPosition ?? textView.Caret.Position.BufferPosition.Position;
 
             AssertEx.EqualOrDiff(actualExpectedCode, actualCodeAfterCommit);
-            Assert.Equal(expectedCaretPosition, caretPosition);
+
+            if (expectedSelectionSpan != null)
+                Assert.Equal(expectedSelectionSpan, selectionSpan);
+            else if (expectedCaretPosition != null)
+                Assert.Equal(expectedCaretPosition, caretPosition);
         }
 
         private void VerifyCustomCommitWorker(
@@ -1095,7 +1101,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
             string code, int position, string insertText, bool usePreviousCharAsTrigger, char? deletedCharTrigger,
             string expectedItemOrNull, string expectedDescriptionOrNull,
             SourceCodeKind sourceCodeKind, bool checkForAbsence,
-            int? glyph, int? matchPriority, bool? hasSuggestionItem,
+            Glyph? glyph, int? matchPriority, bool? hasSuggestionItem,
             string displayTextSuffix, string displayTextPrefix, string inlineDescription = null,
             bool? isComplexTextEdit = null, List<CompletionFilter> matchingFilters = null, CompletionItemFlags? flags = null, CompletionOptions options = null, bool skipSpeculation = false)
         {
@@ -1112,7 +1118,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private protected async Task VerifyAtPositionAsync(
             string code, int position, bool usePreviousCharAsTrigger, char? deletedCharTrigger,
             string expectedItemOrNull, string expectedDescriptionOrNull,
-            SourceCodeKind sourceCodeKind, bool checkForAbsence, int? glyph,
+            SourceCodeKind sourceCodeKind, bool checkForAbsence, Glyph? glyph,
             int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription = null, bool? isComplexTextEdit = null,
             List<CompletionFilter> matchingFilters = null, CompletionItemFlags? flags = null, CompletionOptions options = null, bool skipSpeculation = false)
@@ -1127,7 +1133,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private protected async Task VerifyAtPosition_ItemPartiallyWrittenAsync(
             string code, int position, bool usePreviousCharAsTrigger, char? deletedCharTrigger,
             string expectedItemOrNull, string expectedDescriptionOrNull,
-            SourceCodeKind sourceCodeKind, bool checkForAbsence, int? glyph,
+            SourceCodeKind sourceCodeKind, bool checkForAbsence, Glyph? glyph,
             int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription = null, bool? isComplexTextEdit = null,
             List<CompletionFilter> matchingFilters = null, CompletionItemFlags? flags = null,
@@ -1183,7 +1189,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private protected async Task VerifyAtEndOfFileAsync(
             string code, int position, string insertText, bool usePreviousCharAsTrigger, char? deletedCharTrigger,
             string expectedItemOrNull, string expectedDescriptionOrNull,
-            SourceCodeKind sourceCodeKind, bool checkForAbsence, int? glyph,
+            SourceCodeKind sourceCodeKind, bool checkForAbsence, Glyph? glyph,
             int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription = null, bool? isComplexTextEdit = null,
             List<CompletionFilter> matchingFilters = null, CompletionItemFlags? flags = null,
@@ -1208,7 +1214,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private protected async Task VerifyAtEndOfFileAsync(
             string code, int position, bool usePreviousCharAsTrigger, char? deletedCharTrigger,
             string expectedItemOrNull, string expectedDescriptionOrNull,
-            SourceCodeKind sourceCodeKind, bool checkForAbsence, int? glyph,
+            SourceCodeKind sourceCodeKind, bool checkForAbsence, Glyph? glyph,
             int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription = null, bool? isComplexTextEdit = null,
             List<CompletionFilter> matchingFilters = null, CompletionItemFlags? flags = null,
@@ -1234,7 +1240,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         private protected async Task VerifyAtEndOfFile_ItemPartiallyWrittenAsync(
             string code, int position, bool usePreviousCharAsTrigger, char? deletedCharTrigger,
             string expectedItemOrNull, string expectedDescriptionOrNull,
-            SourceCodeKind sourceCodeKind, bool checkForAbsence, int? glyph,
+            SourceCodeKind sourceCodeKind, bool checkForAbsence, Glyph? glyph,
             int? matchPriority, bool? hasSuggestionItem, string displayTextSuffix,
             string displayTextPrefix, string inlineDescription = null, bool? isComplexTextEdit = null,
             List<CompletionFilter> matchingFilters = null, CompletionItemFlags? flags = null,

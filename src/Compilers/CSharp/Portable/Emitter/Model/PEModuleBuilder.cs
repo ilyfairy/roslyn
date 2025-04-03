@@ -301,7 +301,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Emit
         /// </summary>
         private static void GetDocumentsForMethodsAndNestedTypes(PooledHashSet<Cci.DebugSourceDocument> documentList, ArrayBuilder<Cci.ITypeDefinition> typesToProcess, EmitContext context)
         {
-            // Temporarily disable assert to unblock getting net8.0 teststing re-nabled on Unix. Will 
+            // Temporarily disable assert to unblock getting net8.0 testing re-enabled on Unix. Will 
             // remove this shortly.
             // https://github.com/dotnet/roslyn/issues/71571
             // Debug.Assert(!context.MetadataOnly);
@@ -2105,7 +2105,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Emit
 
         public override void AddSynthesizedDefinition(NamedTypeSymbol container, Cci.IMethodDefinition method)
         {
-            Debug.Assert(container is not NamedTypeSymbol { IsExtension: true } || method.GetInternalSymbol() is SynthesizedExtensionMarker);
+            Debug.Assert(container is not NamedTypeSymbol { IsExtension: true });
             base.AddSynthesizedDefinition(container, method);
         }
 

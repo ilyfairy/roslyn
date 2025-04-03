@@ -336,7 +336,6 @@ namespace Microsoft.CodeAnalysis.CSharp
                 explicitCastInCode: false,
                 conversionGroupOpt: null,
                 constantValueOpt: constantValueOpt,
-                originalUserDefinedConversionsOpt: default,
                 type: type)
             { WasCompilerGenerated = true };
         }
@@ -391,35 +390,9 @@ namespace Microsoft.CodeAnalysis.CSharp
                 explicitCastInCode: explicitCastInCode,
                 constantValueOpt: constantValueOpt,
                 conversionGroupOpt,
-                conversion.OriginalUserDefinedConversions,
                 type: type,
                 hasErrors: hasErrors || !conversion.IsValid)
         { }
-
-        public BoundConversion(
-            SyntaxNode syntax,
-            BoundExpression operand,
-            Conversion conversion,
-            bool isBaseConversion,
-            bool @checked,
-            bool explicitCastInCode,
-            ConstantValue? constantValueOpt,
-            ConversionGroup? conversionGroupOpt,
-            TypeSymbol type,
-            bool hasErrors = false) :
-            this(syntax, operand, conversion, isBaseConversion, @checked, explicitCastInCode, constantValueOpt, conversionGroupOpt, originalUserDefinedConversionsOpt: default, type, hasErrors)
-        {
-        }
-
-        public BoundConversion Update(BoundExpression operand,
-                                      Conversion conversion,
-                                      bool isBaseConversion,
-                                      bool @checked,
-                                      bool explicitCastInCode,
-                                      ConstantValue? constantValueOpt,
-                                      ConversionGroup? conversionGroupOpt,
-                                      TypeSymbol type)
-            => Update(operand, conversion, isBaseConversion, @checked, explicitCastInCode, constantValueOpt, conversionGroupOpt, this.OriginalUserDefinedConversionsOpt, type);
     }
 
     internal sealed partial class BoundBinaryOperator
@@ -512,17 +485,6 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             Debug.Assert(operatorKind.IsUserDefined() && operatorKind.IsLogical());
         }
-
-        public BoundUserDefinedConditionalLogicalOperator Update(BinaryOperatorKind operatorKind,
-                                                                 MethodSymbol logicalOperator,
-                                                                 MethodSymbol trueOperator,
-                                                                 MethodSymbol falseOperator,
-                                                                 TypeSymbol? constrainedToTypeOpt,
-                                                                 LookupResultKind resultKind,
-                                                                 BoundExpression left,
-                                                                 BoundExpression right,
-                                                                 TypeSymbol type)
-            => Update(operatorKind, logicalOperator, trueOperator, falseOperator, constrainedToTypeOpt, resultKind, this.OriginalUserDefinedOperatorsOpt, left, right, type);
     }
 
     internal sealed partial class BoundParameter

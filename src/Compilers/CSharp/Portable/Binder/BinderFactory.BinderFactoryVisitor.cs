@@ -183,25 +183,11 @@ namespace Microsoft.CodeAnalysis.CSharp
                     {
                         method = method ?? GetMethodSymbol(methodDecl, resultBinder);
                         isIteratorBody = method.IsIterator;
-                        resultBinder = WithExtensionReceiverParameterBinderIfNecessary(resultBinder, method);
                         resultBinder = new InMethodBinder(method, resultBinder);
                     }
 
                     resultBinder = resultBinder.SetOrClearUnsafeRegionIfNecessary(methodDecl.Modifiers, isIteratorBody: isIteratorBody);
                     binderCache.TryAdd(key, resultBinder);
-                }
-
-                return resultBinder;
-            }
-
-            private static Binder WithExtensionReceiverParameterBinderIfNecessary(Binder resultBinder, MethodSymbol method)
-            {
-                if (method is { IsStatic: false, ContainingType: SourceNamedTypeSymbol { IsExtension: true, ExtensionParameter: { } parameter } })
-                {
-                    // PROTOTYPE: Depending on whether we consider method parameters and receiver parameter in the same scope and
-                    //            what are the name conflict/shadowing rules, we might consider to adjust behavior of InMethodBinder instead.
-                    //            If we decide to keep usage of WithParametersBinder, we might want to update XML doc comment for it.
-                    return new WithParametersBinder([parameter], resultBinder);
                 }
 
                 return resultBinder;
@@ -327,7 +313,6 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                         if ((object)accessor != null)
                         {
-                            resultBinder = WithExtensionReceiverParameterBinderIfNecessary(resultBinder, accessor);
                             resultBinder = new InMethodBinder(accessor, resultBinder);
 
                             resultBinder = resultBinder.SetOrClearUnsafeRegionIfNecessary(
@@ -437,7 +422,6 @@ namespace Microsoft.CodeAnalysis.CSharp
                         // `isIteratorBody` to `SetOrClearUnsafeRegionIfNecessary` above.
                         Debug.Assert(!accessor.IsIterator);
 
-                        resultBinder = WithExtensionReceiverParameterBinderIfNecessary(resultBinder, accessor);
                         resultBinder = new InMethodBinder(accessor, resultBinder);
                     }
 
@@ -614,25 +598,16 @@ namespace Microsoft.CodeAnalysis.CSharp
                         return false;
                     }
 
-                    if (kind is SymbolKind.Method or SymbolKind.Property)
+                    if (kind is SymbolKind.Method or SymbolKind.Property or SymbolKind.Event)
                     {
                         if (InSpan(sym.GetFirstLocation(), this.syntaxTree, memberSpan))
                         {
                             return true;
                         }
 
-                        // If this is a partial member, the member represents the defining part,
-                        // not the implementation (member.Locations includes both parts). If the
-                        // span is in fact in the implementation, return that member instead.
-                        if (sym switch
-#pragma warning disable format
-                            {
-                                MethodSymbol method => (Symbol)method.PartialImplementationPart,
-                                SourcePropertySymbol property => property.PartialImplementationPart,
-                                _ => throw ExceptionUtilities.UnexpectedValue(sym)
-                            }
-#pragma warning restore format
-                            is { } implementation)
+                        // If this is a partial member, the member represents the defining part, not the implementation.
+                        // If the span is in fact in the implementation, return that member instead.
+                        if (sym.GetPartialImplementationPart() is { } implementation)
                         {
                             if (InSpan(implementation.GetFirstLocation(), this.syntaxTree, memberSpan))
                             {
@@ -805,6 +780,11 @@ namespace Microsoft.CodeAnalysis.CSharp
                             if (parent.TypeParameterList != null)
                             {
                                 resultBinder = new WithClassTypeParametersBinder(typeSymbol, resultBinder);
+                            }
+
+                            if (typeSymbol.IsExtension)
+                            {
+                                resultBinder = new WithExtensionParameterBinder(typeSymbol, resultBinder);
                             }
                         }
                     }

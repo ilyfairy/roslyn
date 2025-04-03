@@ -2453,7 +2453,7 @@ public static class E
                 Assert.Equal(["void C.M(C c)", "void C.M()"], model.GetMemberGroup(memberAccess2).ToTestDisplayStrings());
             }
 
-            // PROTOTYPE instead of finding the extension method and reporting an error on its receiver,
+            // Tracked by https://github.com/dotnet/roslyn/issues/76130 : instead of finding the extension method and reporting an error on its receiver,
             // we should instead discard it as a candidate early like we do for instance methods in OverloadResolution.RemoveStaticInstanceMismatches
             {
                 var comp = CreateCompilation(source, parseOptions: useCSharp13 ? TestOptions.Regular13 : TestOptions.RegularPreview);
@@ -2528,7 +2528,7 @@ public static class E
                 Assert.Equal(["void C.M()"], model.GetMemberGroup(memberAccess2).ToTestDisplayStrings());
             }
 
-            // PROTOTYPE instead of finding the extension method and reporting an error on its receiver,
+            // Tracked by https://github.com/dotnet/roslyn/issues/76130 : instead of finding the extension method and reporting an error on its receiver,
             // we should instead discard it as a candidate early like we do for instance methods in OverloadResolution.RemoveStaticInstanceMismatches
             {
                 var comp = CreateCompilation(source, parseOptions: useCSharp13 ? TestOptions.RegularNext : TestOptions.RegularPreview);
@@ -3018,9 +3018,7 @@ public class C
             var model = comp.GetSemanticModel(tree);
             var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "new C().M<int>");
             Assert.Equal("void C.M<System.Int32>()", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
-
-            AssertEx.Equal(["void C.M<System.Int32>()", "void C.M<System.Int32>(System.Object o)"],
-                model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
+            AssertEx.Equal(["void C.M<System.Int32>()"], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
         }
 
         [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/69222")]
@@ -3144,9 +3142,7 @@ static class E2
             var model = comp.GetSemanticModel(tree);
             var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "new object().M<object>");
             Assert.Equal("void System.Object.M<System.Object>()", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
-
-            AssertEx.Equal(["void System.Object.M<System.Object>()", "void System.Object.M<System.Object>(System.Object ignored)"],
-                model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
+            AssertEx.Equal(["void System.Object.M<System.Object>()"], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
         }
 
         [Theory, CombinatorialData]
@@ -16223,7 +16219,7 @@ class Program
         }
 
         [Fact]
-        public void LambdWithDefaultNamedDelegateConversion_LambdaMissingOptional()
+        public void LambdaWithDefaultNamedDelegateConversion_LambdaMissingOptional()
         {
             var source = """
 class Program

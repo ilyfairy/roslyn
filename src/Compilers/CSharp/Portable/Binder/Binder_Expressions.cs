@@ -48,6 +48,11 @@ namespace Microsoft.CodeAnalysis.CSharp
                 return false;
             }
 
+            if (memberOpt?.GetIsNewExtensionMember() == true)
+            {
+                return false;
+            }
+
             var containingType = memberOpt?.ContainingType;
             bool inTopLevelScriptMember = (object)containingType != null && containingType.IsScriptClass;
 
@@ -2116,6 +2121,14 @@ namespace Microsoft.CodeAnalysis.CSharp
                         {
                             Error(diagnostics, ErrorCode.ERR_InvalidPrimaryConstructorParameterReference, node, parameter);
                         }
+                        else if (parameter.ContainingSymbol is NamedTypeSymbol { IsExtension: true } &&
+                                (InParameterDefaultValue || InAttributeArgument ||
+                                 this.ContainingMember() is not { Kind: not SymbolKind.NamedType, IsStatic: false } || // We are not in an instance member
+                                 (object)this.ContainingMember().ContainingSymbol != parameter.ContainingSymbol) &&
+                                !IsInsideNameof)
+                        {
+                            Error(diagnostics, ErrorCode.ERR_InvalidExtensionParameterReference, node, parameter);
+                        }
                         else
                         {
                             // Records never capture parameters within the type
@@ -3437,75 +3450,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                     continue;
                 }
 
-                if (!argument.HasAnyErrors)
-                {
-                    var argRefKind = analyzedArguments.RefKind(arg);
-
-                    if (!Compilation.IsFeatureEnabled(MessageID.IDS_FeatureRefReadonlyParameters))
-                    {
-                        // Disallow using `ref readonly` parameters with no or `in` argument modifier,
-                        // same as older versions of the compiler would (since they would see the parameter as `ref`).
-                        if (argRefKind is RefKind.None or RefKind.In &&
-                            getCorrespondingParameter(in result, parameters, arg).RefKind == RefKind.RefReadOnlyParameter)
-                        {
-                            var available = CheckFeatureAvailability(argument.Syntax, MessageID.IDS_FeatureRefReadonlyParameters, diagnostics);
-                            Debug.Assert(!available);
-                        }
-                    }
-                    else
-                    {
-                        var argNumber = invokedAsExtensionMethod ? arg : arg + 1;
-
-                        // Warn for `ref`/`in` or None/`ref readonly` mismatch.
-                        if (argRefKind == RefKind.Ref)
-                        {
-                            if (getCorrespondingParameter(in result, parameters, arg).RefKind == RefKind.In)
-                            {
-                                Debug.Assert(argNumber > 0);
-                                // The 'ref' modifier for argument {0} corresponding to 'in' parameter is equivalent to 'in'. Consider using 'in' instead.
-                                diagnostics.Add(
-                                    ErrorCode.WRN_BadArgRef,
-                                    argument.Syntax,
-                                    argNumber);
-                            }
-                        }
-                        else if (argRefKind == RefKind.None &&
-                            getCorrespondingParameter(in result, parameters, arg).RefKind == RefKind.RefReadOnlyParameter)
-                        {
-                            if (!this.CheckValueKind(argument.Syntax, argument, BindValueKind.RefersToLocation, checkingReceiver: false, BindingDiagnosticBag.Discarded))
-                            {
-                                Debug.Assert(argNumber >= 0); // can be 0 for receiver of extension method
-                                // Argument {0} should be a variable because it is passed to a 'ref readonly' parameter
-                                diagnostics.Add(
-                                    ErrorCode.WRN_RefReadonlyNotVariable,
-                                    argument.Syntax,
-                                    argNumber);
-                            }
-                            else if (!invokedAsExtensionMethod || arg != 0)
-                            {
-                                Debug.Assert(argNumber > 0);
-                                if (this.CheckValueKind(argument.Syntax, argument, BindValueKind.Assignable, checkingReceiver: false, BindingDiagnosticBag.Discarded))
-                                {
-                                    // Argument {0} should be passed with 'ref' or 'in' keyword
-                                    diagnostics.Add(
-                                        ErrorCode.WRN_ArgExpectedRefOrIn,
-                                        argument.Syntax,
-                                        argNumber);
-                                }
-                                else
-                                {
-                                    // Argument {0} should be passed with the 'in' keyword
-                                    diagnostics.Add(
-                                        ErrorCode.WRN_ArgExpectedIn,
-                                        argument.Syntax,
-                                        argNumber);
-                                }
-                            }
-                        }
-                    }
-                }
-
                 int paramNum = result.ParameterFromArgument(arg);
+                CheckArgumentRefKind(analyzedArguments.RefKind(arg), argument, arg, parameters[paramNum], invokedAsExtensionMethod, diagnostics);
 
                 if (expanded && paramNum == parameters.Length - 1)
                 {
@@ -3936,6 +3882,77 @@ namespace Microsoft.CodeAnalysis.CSharp
                     constantValueOpt: null,
                     handlerType,
                     hasErrors || interpolatedString.HasErrors);
+            }
+        }
+
+        private void CheckArgumentRefKind(RefKind argRefKind, BoundExpression argument, int arg, ParameterSymbol parameter,
+            bool invokedAsExtensionMethod, BindingDiagnosticBag diagnostics)
+        {
+            if (argument.HasAnyErrors)
+            {
+                return;
+            }
+
+            if (!Compilation.IsFeatureEnabled(MessageID.IDS_FeatureRefReadonlyParameters))
+            {
+                // Disallow using `ref readonly` parameters with no or `in` argument modifier,
+                // same as older versions of the compiler would (since they would see the parameter as `ref`).
+                if (argRefKind is RefKind.None or RefKind.In && parameter.RefKind == RefKind.RefReadOnlyParameter)
+                {
+                    var available = CheckFeatureAvailability(argument.Syntax, MessageID.IDS_FeatureRefReadonlyParameters, diagnostics);
+                    Debug.Assert(!available);
+                }
+            }
+            else
+            {
+                // Tracked by https://github.com/dotnet/roslyn/issues/76130 : consider removing or adjusting the reported argument position
+                var argNumber = invokedAsExtensionMethod ? arg : arg + 1;
+
+                // Warn for `ref`/`in` or None/`ref readonly` mismatch.
+                if (argRefKind == RefKind.Ref)
+                {
+                    if (parameter.RefKind == RefKind.In)
+                    {
+                        Debug.Assert(argNumber > 0);
+                        // The 'ref' modifier for argument {0} corresponding to 'in' parameter is equivalent to 'in'. Consider using 'in' instead.
+                        diagnostics.Add(
+                            ErrorCode.WRN_BadArgRef,
+                            argument.Syntax,
+                            argNumber);
+                    }
+                }
+                else if (argRefKind == RefKind.None && parameter.RefKind == RefKind.RefReadOnlyParameter)
+                {
+                    if (!this.CheckValueKind(argument.Syntax, argument, BindValueKind.RefersToLocation, checkingReceiver: false, BindingDiagnosticBag.Discarded))
+                    {
+                        Debug.Assert(argNumber >= 0); // can be 0 for receiver of extension method
+                                                      // Argument {0} should be a variable because it is passed to a 'ref readonly' parameter
+                        diagnostics.Add(
+                            ErrorCode.WRN_RefReadonlyNotVariable,
+                            argument.Syntax,
+                            argNumber);
+                    }
+                    else if (!invokedAsExtensionMethod || arg != 0)
+                    {
+                        Debug.Assert(argNumber > 0);
+                        if (this.CheckValueKind(argument.Syntax, argument, BindValueKind.Assignable, checkingReceiver: false, BindingDiagnosticBag.Discarded))
+                        {
+                            // Argument {0} should be passed with 'ref' or 'in' keyword
+                            diagnostics.Add(
+                                ErrorCode.WRN_ArgExpectedRefOrIn,
+                                argument.Syntax,
+                                argNumber);
+                        }
+                        else
+                        {
+                            // Argument {0} should be passed with the 'in' keyword
+                            diagnostics.Add(
+                                ErrorCode.WRN_ArgExpectedIn,
+                                argument.Syntax,
+                                argNumber);
+                        }
+                    }
+                }
             }
         }
 #nullable disable
@@ -6685,7 +6702,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 if (overloadResolutionResult.HasAnyApplicableMember)
                 {
-                    var finalApplicableCandidates = GetCandidatesPassingFinalValidation(node, overloadResolutionResult, receiverOpt: null, default(ImmutableArray<TypeWithAnnotations>), invokedAsExtensionMethod: false, diagnostics);
+                    var finalApplicableCandidates = GetCandidatesPassingFinalValidation(node, overloadResolutionResult, receiverOpt: null, default(ImmutableArray<TypeWithAnnotations>), isExtensionMethodGroup: false, diagnostics);
 
                     if (finalApplicableCandidates.Length == 1)
                     {
@@ -7837,7 +7854,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     Error(diagnostics, lookupResult.Error, right);
 
                     return new BoundTypeExpression(node, null,
-                                new ExtendedErrorTypeSymbol(GetContainingNamespaceOrType(symbols[0]), symbols.ToImmutable(), lookupResult.Kind, lookupResult.Error, rightArity));
+                                new ExtendedErrorTypeSymbol(GetContainingNamespaceOrNonExtensionType(symbols[0]), symbols.ToImmutable(), lookupResult.Kind, lookupResult.Error, rightArity));
                 }
                 else if (lookupResult.Kind == LookupResultKind.Empty)
                 {
@@ -7990,14 +8007,18 @@ namespace Microsoft.CodeAnalysis.CSharp
             // Note: we're resolving without arguments, which means we're not treating the member access as invoked
             var resolution = this.ResolveExtension(
                 syntax, name, analyzedArguments: null, receiver, typeArgumentsOpt, options: OverloadResolution.Options.None,
-                returnRefKind: default, returnType: null, ref useSiteInfo);
+                returnRefKind: default, returnType: null, ref useSiteInfo, acceptOnlyMethods: false);
 
             diagnostics.Add(syntax, useSiteInfo);
 
             if (resolution.IsNonMethodExtensionMember(out Symbol? extensionMember))
             {
                 Debug.Assert(typeArgumentsOpt.IsDefault);
-                diagnostics.AddRange(resolution.Diagnostics); // PROTOTYPE test dependencies/diagnostics
+                if (!receiver.HasErrors)
+                {
+                    diagnostics.AddRange(resolution.Diagnostics); // Tracked by https://github.com/dotnet/roslyn/issues/76130 : test dependencies/diagnostics
+                }
+
                 resolution.Free();
 
                 return GetExtensionMemberAccess(syntax, receiver, extensionMember, diagnostics);
@@ -8014,12 +8035,18 @@ namespace Microsoft.CodeAnalysis.CSharp
             switch (extensionMember)
             {
                 case PropertySymbol propertySymbol:
+                    Debug.Assert(propertySymbol.ContainingType.ExtensionParameter is not null);
+
+                    if (receiver is not BoundTypeExpression)
+                    {
+                        receiver = CheckAndConvertExtensionReceiver(receiver, propertySymbol.ContainingType.ExtensionParameter, diagnostics);
+                    }
+
                     return BindPropertyAccess(syntax, receiver, propertySymbol, diagnostics, LookupResultKind.Viable, hasErrors: false);
 
-                case NamedTypeSymbol namedTypeSymbol:
-                    Debug.Assert(namedTypeSymbol is ExtendedErrorTypeSymbol); // An error type is used to represent a bad result symbol (so we don't deal with type arguments)
-                    bool wasError = true;
-                    return BindTypeMemberOfType(receiver, namedTypeSymbol.Name, namedTypeSymbol, syntax, right: syntax, diagnostics, ref wasError);
+                case ExtendedErrorTypeSymbol errorTypeSymbol:
+                    // Tracked by https://github.com/dotnet/roslyn/issues/76130 : we should likely reduce (ie. do type inference and substitute) the candidates (like ToBadExpression)
+                    return new BoundBadExpression(syntax, LookupResultKind.Viable, errorTypeSymbol.CandidateSymbols!, [receiver], CreateErrorType());
 
                 default:
                     throw ExceptionUtilities.UnexpectedValue(extensionMember.Kind);
@@ -8322,7 +8349,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             Debug.Assert(extensionMethodArguments.Names.Count == 0);
             Debug.Assert(extensionMethodArguments.RefKinds.Count == 0);
 
-            extensionMethodArguments.IsExtensionMethodInvocation = true;
+            extensionMethodArguments.IncludesReceiverAsArgument = true;
             extensionMethodArguments.Arguments.Add(receiver);
             extensionMethodArguments.Arguments.AddRange(originalArguments.Arguments);
 
@@ -8337,6 +8364,17 @@ namespace Microsoft.CodeAnalysis.CSharp
                 extensionMethodArguments.RefKinds.Add(RefKind.None);
                 extensionMethodArguments.RefKinds.AddRange(originalArguments.RefKinds);
             }
+        }
+
+        private static void InitializeExtensionPropertyArguments(BoundExpression receiver, AnalyzedArguments extensionPropertyArguments)
+        {
+            Debug.Assert(receiver != null);
+            Debug.Assert(extensionPropertyArguments.Arguments.Count == 0);
+            Debug.Assert(extensionPropertyArguments.Names.Count == 0);
+            Debug.Assert(extensionPropertyArguments.RefKinds.Count == 0);
+
+            extensionPropertyArguments.IncludesReceiverAsArgument = true;
+            extensionPropertyArguments.Arguments.Add(receiver);
         }
 
         /// <summary>
@@ -8407,6 +8445,12 @@ namespace Microsoft.CodeAnalysis.CSharp
                 {
                     case SymbolKind.NamedType:
                     case SymbolKind.ErrorType:
+                        if (IsInstanceReceiver(left) == true && !wasError)
+                        {
+                            // CS0572: 'B': cannot reference a type through an expression; try 'A.B' instead
+                            Error(diagnostics, ErrorCode.ERR_BadTypeReference, right, plainName, symbol);
+                            wasError = true;
+                        }
 
                         // If I identifies a type, then the result is that type constructed with
                         // the given type arguments.
@@ -8416,7 +8460,12 @@ namespace Microsoft.CodeAnalysis.CSharp
                             type = ConstructNamedTypeUnlessTypeArgumentOmitted(right, type, typeArgumentsSyntax, typeArgumentsWithAnnotations, diagnostics);
                         }
 
-                        result = BindTypeMemberOfType(left, plainName, type, node, right, diagnostics, ref wasError);
+                        result = new BoundTypeExpression(
+                            syntax: node,
+                            aliasOpt: null,
+                            boundContainingTypeOpt: left as BoundTypeExpression,
+                            boundDimensionsOpt: ImmutableArray<BoundExpression>.Empty,
+                            typeWithAnnotations: TypeWithAnnotations.Create(type));
                         break;
 
                     case SymbolKind.Property:
@@ -8450,26 +8499,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             return result;
         }
 
-        private BoundExpression BindTypeMemberOfType(BoundExpression left, string plainName, NamedTypeSymbol symbol,
-            SyntaxNode node, SyntaxNode right, BindingDiagnosticBag diagnostics, ref bool wasError)
-        {
-            if (IsInstanceReceiver(left) == true && !wasError)
-            {
-                // CS0572: 'B': cannot reference a type through an expression; try 'A.B' instead
-                Error(diagnostics, ErrorCode.ERR_BadTypeReference, right, plainName, symbol);
-                wasError = true;
-            }
-
-            return new BoundTypeExpression(
-                syntax: node,
-                aliasOpt: null,
-                boundContainingTypeOpt: left as BoundTypeExpression,
-                boundDimensionsOpt: ImmutableArray<BoundExpression>.Empty,
-                typeWithAnnotations: TypeWithAnnotations.Create(symbol));
-        }
-
 #nullable enable
-        // PROTOTYPE revisit handling of use-site diagnostics (some are currently put in the returned MethodGroupResolution and others are collected separately)
         protected MethodGroupResolution ResolveExtension(
             SyntaxNode expression,
             string memberName,
@@ -8480,9 +8510,11 @@ namespace Microsoft.CodeAnalysis.CSharp
             RefKind returnRefKind,
             TypeSymbol? returnType,
             ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo,
+            bool acceptOnlyMethods,
             in CallingConventionInfo callingConvention = default)
         {
             Debug.Assert(left.Type is not null);
+            Debug.Assert(!left.Type.IsDynamic());
             Debug.Assert((options & ~(OverloadResolution.Options.IsMethodGroupConversion |
                                       OverloadResolution.Options.IsFunctionPointerResolution |
                                       OverloadResolution.Options.InferWithDynamic |
@@ -8492,152 +8524,189 @@ namespace Microsoft.CodeAnalysis.CSharp
                                       OverloadResolution.Options.DynamicConvertsToAnything)) == 0);
 
             var firstResult = new MethodGroupResolution();
-            AnalyzedArguments? actualArguments = null;
+            var lookupResult = LookupResult.GetInstance();
+            var classicExtensionLookupResult = LookupResult.GetInstance();
+            var diagnostics = BindingDiagnosticBag.GetInstance(withDiagnostics: true, useSiteInfo.AccumulatesDependencies);
+            AnalyzedArguments? actualMethodArguments = null;
+            AnalyzedArguments? actualReceiverArguments = null;
+
+            int arity = typeArgumentsWithAnnotations.IsDefault ? 0 : typeArgumentsWithAnnotations.Length;
+            var lookupOptions = (arity == 0) ? LookupOptions.AllMethodsOnArityZero : LookupOptions.Default;
+            if (analyzedArguments is not null)
+            {
+                lookupOptions |= LookupOptions.MustBeInvocableIfMember;
+            }
+
+            if (this.AllowRefOmittedArguments(left))
+            {
+                options |= OverloadResolution.Options.AllowRefOmittedArguments;
+            }
 
             foreach (var scope in new ExtensionScopes(this))
             {
-                // PROTOTYPE we are temporarily prioritizing new extension members over classic extension methods, instead of mixing them
-                if (tryResolveExtensionMember(this, expression, memberName, analyzedArguments, left, typeArgumentsWithAnnotations,
-                    options, returnRefKind, in callingConvention, returnType, ref useSiteInfo, scope,
-                    out MethodGroupResolution extensionResult))
+                lookupResult.Clear();
+                classicExtensionLookupResult.Clear();
+                diagnostics.Clear();
+
+                if (tryResolveExtensionInScope(
+                    expression, left, memberName, arity,
+                    typeArgumentsWithAnnotations, returnType, returnRefKind, lookupResult,
+                    analyzedArguments, ref actualMethodArguments, ref actualReceiverArguments, ref useSiteInfo, ref firstResult,
+                    options, callingConvention, classicExtensionLookupResult, lookupOptions, binder: this, scope: scope, diagnostics: diagnostics,
+                    acceptOnlyMethods: acceptOnlyMethods,
+                    result: out MethodGroupResolution result))
                 {
-                    if (extensionResult.IsNonMethodExtensionMember(out _))
+                    lookupResult.Free();
+                    classicExtensionLookupResult.Free();
+                    diagnostics.Free();
+                    actualReceiverArguments?.Free();
+
+                    if (result.AnalyzedArguments != actualMethodArguments)
                     {
-                        firstResult.Free();
-                        return extensionResult;
+                        actualMethodArguments?.Free();
                     }
 
-                    // If the search in the current scope resulted in any applicable method from an extension type
-                    // (regardless of whether a best applicable method could be determined) then our search is complete.
-                    // Otherwise, store aside the first non-applicable result and continue searching for an applicable result.
-                    if (extensionResult.HasAnyApplicableMethod)
-                    {
-                        firstResult.Free();
-                        return extensionResult;
-                    }
-                    else if (firstResult.IsEmpty)
-                    {
-                        firstResult = extensionResult;
-                    }
-                    else
-                    {
-                        // Neither the first result, nor applicable. No need to save result.
-                        extensionResult.Free();
-                    }
-                }
-
-                if (tryResolveExtensionMethod(this, expression, memberName, analyzedArguments, left, typeArgumentsWithAnnotations,
-                    options, returnRefKind, returnType, in callingConvention, ref useSiteInfo, scope,
-                    ref actualArguments, out MethodGroupResolution extensionMethodResult))
-                {
-                    // If the search in the current scope resulted in any applicable method (regardless of whether a best
-                    // applicable method could be determined) then our search is complete. Otherwise, store aside the
-                    // first non-applicable result and continue searching for an applicable result.
-                    if (extensionMethodResult.HasAnyApplicableMethod)
-                    {
-                        firstResult.Free();
-                        actualArguments?.Free();
-                        return extensionMethodResult;
-                    }
-                    else if (firstResult.IsEmpty)
-                    {
-                        firstResult = extensionMethodResult;
-                    }
-                    else
-                    {
-                        // Neither the first result, nor applicable. No need to save result.
-                        extensionMethodResult.Free();
-                    }
+                    return result;
                 }
             }
 
-            Debug.Assert((actualArguments == null) || !firstResult.IsEmpty);
-            actualArguments?.Free();
+            lookupResult.Free();
+            classicExtensionLookupResult.Free();
+            diagnostics.Free();
+            actualReceiverArguments?.Free();
+
+            if (firstResult.AnalyzedArguments != actualMethodArguments)
+            {
+                actualMethodArguments?.Free();
+            }
 
             return firstResult;
 
-            static bool tryResolveExtensionMember(Binder binder, SyntaxNode expression, string memberName, AnalyzedArguments? analyzedArguments, BoundExpression left,
-                ImmutableArray<TypeWithAnnotations> typeArgumentsWithAnnotations, OverloadResolution.Options options, RefKind returnRefKind, in CallingConventionInfo callingConvention,
-                TypeSymbol? returnType, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo, ExtensionScope scope, out MethodGroupResolution extensionResult)
+            static bool tryResolveExtensionInScope(
+                SyntaxNode expression,
+                BoundExpression left,
+                string memberName,
+                int arity,
+                ImmutableArray<TypeWithAnnotations> typeArgumentsWithAnnotations,
+                TypeSymbol? returnType,
+                RefKind returnRefKind,
+                LookupResult lookupResult,
+                AnalyzedArguments? analyzedArguments,
+                ref AnalyzedArguments? actualMethodArguments,
+                ref AnalyzedArguments? actualReceiverArguments,
+                ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo,
+                ref MethodGroupResolution firstResult,
+                OverloadResolution.Options options,
+                CallingConventionInfo callingConvention,
+                LookupResult classicExtensionLookupResult,
+                LookupOptions lookupOptions,
+                Binder binder,
+                ExtensionScope scope,
+                bool acceptOnlyMethods,
+                BindingDiagnosticBag diagnostics,
+                out MethodGroupResolution result)
             {
-                var lookupResult = LookupResult.GetInstance();
+                Debug.Assert(left.Type is not null);
+                result = default;
 
-                int arity = typeArgumentsWithAnnotations.IsDefault ? 0 : typeArgumentsWithAnnotations.Length;
-                var lookupOptions = (arity == 0) ? LookupOptions.AllMethodsOnArityZero : LookupOptions.Default;
-                if (analyzedArguments is not null)
-                {
-                    lookupOptions |= LookupOptions.MustBeInvocableIfMember;
-                }
+                // 1. gather candidates
+                CompoundUseSiteInfo<AssemblySymbol> classicExtensionUseSiteInfo = binder.GetNewCompoundUseSiteInfo(diagnostics);
+                scope.Binder.LookupAllExtensionMembersInSingleBinder(
+                    lookupResult, memberName, arity, lookupOptions,
+                    originalBinder: binder, useSiteInfo: ref useSiteInfo, classicExtensionUseSiteInfo: ref classicExtensionUseSiteInfo);
 
-                scope.Binder.LookupExtensionMembersInSingleBinder(
-                    lookupResult, left.Type!, memberName, arity,
-                    basesBeingResolved: null, lookupOptions, originalBinder: binder, ref useSiteInfo);
+                diagnostics.Add(expression, classicExtensionUseSiteInfo);
 
                 if (!lookupResult.IsMultiViable)
                 {
-                    lookupResult.Free();
-                    extensionResult = default;
                     return false;
                 }
 
-                var members = ArrayBuilder<Symbol>.GetInstance();
+                // 2. resolve methods
+                MethodGroupResolution methodResult = resolveMethods(expression, left, typeArgumentsWithAnnotations, returnType, returnRefKind,
+                    lookupResult, analyzedArguments, ref actualMethodArguments, options, in callingConvention, binder, diagnostics);
 
-                var diagnostics = BindingDiagnosticBag.GetInstance(withDiagnostics: true, withDependencies: useSiteInfo.AccumulatesDependencies);
+                // 3. resolve properties
+                Debug.Assert(arity == 0 || lookupResult.Symbols.All(s => s.Kind != SymbolKind.Property));
 
-                Symbol? symbol = binder.GetSymbolOrMethodOrPropertyGroupStrict(lookupResult, expression, memberName, arity, members, diagnostics, qualifierOpt: null);
-                if (symbol is not null)
+                // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Regarding 'acceptOnlyMethods', consider if it would be better to add a special 'LookupOptions' value to filter out properties during lookup
+                OverloadResolutionResult<PropertySymbol>? propertyResult = arity != 0 || acceptOnlyMethods ? null : resolveProperties(left, lookupResult, binder, ref actualReceiverArguments, ref useSiteInfo);
+
+                // 4. determine member kind
+                if (!methodResult.HasAnyApplicableMethod && propertyResult?.HasAnyApplicableMember != true)
                 {
-                    lookupResult.Free();
-                    members.Free();
-                    extensionResult = new MethodGroupResolution(symbol, LookupResultKind.Viable, diagnostics.ToReadOnlyAndFree());
-                    return true;
-                }
+                    // Found nothing applicable. Store aside the first non-applicable result and continue searching for an applicable result.
+                    if (firstResult.IsEmpty)
+                    {
+                        if (propertyResult != null)
+                        {
+                            methodResult.Free(keepArguments: true);
+                            propertyResult.Free();
+                            firstResult = makeErrorResult(left.Type, memberName, arity, lookupResult, expression, diagnostics);
+                        }
+                        else
+                        {
+                            firstResult = methodResult;
+                        }
+                    }
 
-                if (members[0].Kind is not SymbolKind.Method)
-                {
-                    lookupResult.Free();
-                    members.Free();
-                    diagnostics.Free();
-                    extensionResult = default;
                     return false;
                 }
 
-                var methodGroup = MethodGroup.GetInstance();
-                methodGroup.PopulateWithMethods(left, members, typeArgumentsWithAnnotations, isExtensionMethodGroup: false, resultKind: lookupResult.Kind);
-                members.Free();
-
-                if (analyzedArguments is null)
+                if (methodResult.HasAnyApplicableMethod)
                 {
-                    lookupResult.Free();
-                    extensionResult = new MethodGroupResolution(methodGroup, diagnostics.ToReadOnlyAndFree());
+                    // If the search in the current scope resulted in any applicable method (regardless of whether a best
+                    // applicable method could be determined) then our search is complete.
+                    if (propertyResult?.HasAnyApplicableMember != true)
+                    {
+                        // methods win
+                        propertyResult?.Free();
+                        result = methodResult;
+                        return true;
+                    }
+
+                    // ambiguous between methods and properties
+                    methodResult.Free(keepArguments: true);
+                    propertyResult?.Free();
+                    result = makeErrorResult(left.Type, memberName, arity, lookupResult, expression, diagnostics);
                     return true;
                 }
 
-                extensionResult = resolveOverloads(binder, methodGroup, analyzedArguments, options, returnType, returnRefKind, in callingConvention, expression, diagnostics);
-                diagnostics.Free();
+                // If the search in the current scope resulted in any applicable property (regardless of whether a best
+                // applicable property could be determined) then our search is complete.
+                Debug.Assert(propertyResult?.HasAnyApplicableMember == true);
+                methodResult.Free(keepArguments: true);
+                if (propertyResult.Succeeded && propertyResult.BestResult.Member is { } bestProperty)
+                {
+                    // property wins
+                    propertyResult.Free();
+                    result = new MethodGroupResolution(bestProperty, LookupResultKind.Viable, diagnostics.ToReadOnly());
+                    return true;
+                }
+
+                // ambiguous between multiple applicable properties
+                propertyResult.Free();
+                // Tracked by https://github.com/dotnet/roslyn/issues/76130 : consider using the property overload resolution result in the result to improve reported diagnostics
+                result = makeErrorResult(left.Type, memberName, arity, lookupResult, expression, diagnostics);
                 return true;
             }
 
-            static bool tryResolveExtensionMethod(
-                Binder binder,
+            static MethodGroupResolution resolveMethods(
                 SyntaxNode expression,
-                string methodName,
-                AnalyzedArguments? analyzedArguments,
                 BoundExpression left,
                 ImmutableArray<TypeWithAnnotations> typeArgumentsWithAnnotations,
-                OverloadResolution.Options options,
-                RefKind returnRefKind,
                 TypeSymbol? returnType,
+                RefKind returnRefKind,
+                LookupResult lookupResult,
+                AnalyzedArguments? analyzedArguments,
+                ref AnalyzedArguments? actualMethodArguments,
+                OverloadResolution.Options options,
                 in CallingConventionInfo callingConvention,
-                ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo,
-                ExtensionScope scope,
-                ref AnalyzedArguments? actualArguments,
-                out MethodGroupResolution result)
+                Binder binder,
+                BindingDiagnosticBag diagnostics)
             {
                 var methodGroup = MethodGroup.GetInstance();
-
-                var diagnostics = BindingDiagnosticBag.GetInstance(withDiagnostics: true, withDependencies: useSiteInfo.AccumulatesDependencies);
-                binder.PopulateExtensionMethodsFromSingleBinder(scope, methodGroup, expression, left, methodName, typeArgumentsWithAnnotations, diagnostics);
+                methodGroup.PopulateWithExtensionMethods(left, lookupResult.Symbols, typeArgumentsWithAnnotations, resultKind: lookupResult.Kind);
 
                 if (analyzedArguments == null)
                 {
@@ -8645,53 +8714,54 @@ namespace Microsoft.CodeAnalysis.CSharp
                     // we can still prune the inapplicable extension methods using the receiver type
                     for (int i = methodGroup.Methods.Count - 1; i >= 0; i--)
                     {
-                        if ((object)methodGroup.Methods[i].ReduceExtensionMethod(left.Type, binder.Compilation) == null)
+                        MethodSymbol method = methodGroup.Methods[i];
+                        TypeSymbol? receiverType = left.Type;
+                        Debug.Assert(receiverType is not null);
+
+                        bool inapplicable = false;
+                        if (method.IsExtensionMethod
+                            && (object)method.ReduceExtensionMethod(receiverType, binder.Compilation) == null)
+                        {
+                            inapplicable = true;
+                        }
+                        else if (method.GetIsNewExtensionMember()
+                            && SourceNamedTypeSymbol.GetCompatibleSubstitutedMember(binder.Compilation, method, receiverType) == null)
+                        {
+                            inapplicable = true;
+                        }
+
+                        if (inapplicable)
+                        {
                             methodGroup.Methods.RemoveAt(i);
+                        }
                     }
 
                     if (methodGroup.Methods.Count != 0)
                     {
-                        result = new MethodGroupResolution(methodGroup, diagnostics.ToReadOnlyAndFree());
-                        return true;
+                        return new MethodGroupResolution(methodGroup, diagnostics.ToReadOnly());
                     }
                 }
 
                 if (methodGroup.Methods.Count == 0)
                 {
                     methodGroup.Free();
-                    diagnostics.Free();
-                    result = default;
-                    return false;
+                    return default;
                 }
 
-                if (actualArguments == null)
+                if (actualMethodArguments == null)
                 {
-                    // Create a set of arguments for overload resolution of the
-                    // extension methods that includes the "this" parameter.
-                    actualArguments = AnalyzedArguments.GetInstance();
-                    CombineExtensionMethodArguments(left, analyzedArguments, actualArguments);
+                    // Create a set of arguments for overload resolution including the receiver.
+                    actualMethodArguments = AnalyzedArguments.GetInstance();
+                    CombineExtensionMethodArguments(left, analyzedArguments, actualMethodArguments);
                 }
 
-                result = resolveOverloads(binder, methodGroup, actualArguments, options, returnType, returnRefKind, in callingConvention, expression, diagnostics);
-                diagnostics.Free();
-                return true;
-            }
-
-            static MethodGroupResolution resolveOverloads(Binder binder, MethodGroup methodGroup, AnalyzedArguments actualArguments, OverloadResolution.Options options,
-                TypeSymbol? returnType, RefKind returnRefKind, in CallingConventionInfo callingConvention, SyntaxNode expression, BindingDiagnosticBag diagnostics)
-            {
                 var overloadResolutionResult = OverloadResolutionResult<MethodSymbol>.GetInstance();
-                if (binder.AllowRefOmittedArguments(methodGroup.Receiver))
-                {
-                    options |= OverloadResolution.Options.AllowRefOmittedArguments;
-                }
-
                 CompoundUseSiteInfo<AssemblySymbol> overloadResolutionUseSiteInfo = binder.GetNewCompoundUseSiteInfo(diagnostics);
                 binder.OverloadResolution.MethodInvocationOverloadResolution(
                     methods: methodGroup.Methods,
                     typeArguments: methodGroup.TypeArguments,
                     receiver: methodGroup.Receiver,
-                    arguments: actualArguments,
+                    arguments: actualMethodArguments,
                     result: overloadResolutionResult,
                     ref overloadResolutionUseSiteInfo,
                     options: options | OverloadResolution.Options.IsExtensionMethodResolution,
@@ -8702,8 +8772,55 @@ namespace Microsoft.CodeAnalysis.CSharp
                 diagnostics.Add(expression, overloadResolutionUseSiteInfo);
 
                 // Note: the MethodGroupResolution instance is responsible for freeing the method group,
-                //   the overload resolution result and its copy of arguments
-                return new MethodGroupResolution(methodGroup, null, overloadResolutionResult, AnalyzedArguments.GetInstance(actualArguments), methodGroup.ResultKind, diagnostics.ToReadOnly());
+                //   the overload resolution result and the arguments
+                return new MethodGroupResolution(methodGroup, null, overloadResolutionResult, actualMethodArguments, methodGroup.ResultKind, diagnostics.ToReadOnly());
+            }
+
+            // The caller is responsible for freeing the result
+            static OverloadResolutionResult<PropertySymbol>? resolveProperties(
+                BoundExpression left,
+                LookupResult lookupResult,
+                Binder binder,
+                ref AnalyzedArguments? actualReceiverArguments,
+                ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+            {
+                ArrayBuilder<PropertySymbol>? properties = null;
+                foreach (var member in lookupResult.Symbols)
+                {
+                    if (member is PropertySymbol property)
+                    {
+                        properties ??= ArrayBuilder<PropertySymbol>.GetInstance();
+                        properties.Add(property);
+                    }
+                }
+
+                if (properties is null)
+                {
+                    return null;
+                }
+
+                if (actualReceiverArguments == null)
+                {
+                    actualReceiverArguments = AnalyzedArguments.GetInstance();
+                    InitializeExtensionPropertyArguments(left, actualReceiverArguments);
+                }
+
+                OverloadResolutionResult<PropertySymbol> overloadResolutionResult = OverloadResolutionResult<PropertySymbol>.GetInstance();
+
+                binder.OverloadResolution.PropertyOverloadResolution(properties, left, actualReceiverArguments, overloadResolutionResult,
+                    allowRefOmittedArguments: binder.AllowRefOmittedArguments(left), dynamicResolution: actualReceiverArguments.HasDynamicArgument, ref useSiteInfo);
+
+                properties.Free();
+                return overloadResolutionResult;
+            }
+
+            static MethodGroupResolution makeErrorResult(TypeSymbol receiverType, string memberName, int arity, LookupResult lookupResult, SyntaxNode expression, BindingDiagnosticBag diagnostics)
+            {
+                // Tracked by https://github.com/dotnet/roslyn/issues/76130 : we'll want to describe what went wrong in a useful way (see OverloadResolutionResult.ReportDiagnostics)
+                var errorInfo = new CSDiagnosticInfo(ErrorCode.ERR_ExtensionResolutionFailed, receiverType, memberName);
+                diagnostics.Add(errorInfo, expression.Location);
+                var resultSymbol = new ExtendedErrorTypeSymbol(containingSymbol: null, lookupResult.Symbols.ToImmutable(), LookupResultKind.OverloadResolutionFailure, errorInfo, arity);
+                return new MethodGroupResolution(resultSymbol, LookupResultKind.Viable, diagnostics.ToReadOnly());
             }
         }
 
@@ -8747,7 +8864,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 Symbol symbol = GetSymbolOrMethodOrPropertyGroup(lookupResult, node, rightName, arity, members, diagnostics, out wasError, qualifierOpt: null);
                 Debug.Assert((object)symbol == null);
                 Debug.Assert(members.Count > 0);
-                methodGroup.PopulateWithMethods(left, members, typeArgumentsWithAnnotations, isExtensionMethodGroup: true, lookupResult.Kind);
+                methodGroup.PopulateWithExtensionMethods(left, members, typeArgumentsWithAnnotations, lookupResult.Kind);
                 members.Free();
             }
 
@@ -9187,40 +9304,6 @@ namespace Microsoft.CodeAnalysis.CSharp
             methodOrPropertyGroup.Clear();
             return ResultSymbol(result, plainName, arity, node, diagnostics, false, out wasError, qualifierOpt);
         }
-
-#nullable enable
-        /// <summary>
-        /// Interprets a LookupResult as either a singular symbol or a method/property group.
-        /// It is "strict" in the sense that if the members in the result have different kinds,
-        /// an error result is always returned.
-        /// </summary>
-        private Symbol? GetSymbolOrMethodOrPropertyGroupStrict(LookupResult result, SyntaxNode node, string plainName, int arity,
-            ArrayBuilder<Symbol> methodOrPropertyGroup, BindingDiagnosticBag diagnostics, NamespaceOrTypeSymbol? qualifierOpt)
-        {
-            Debug.Assert(!methodOrPropertyGroup.Any());
-
-            node = GetNameSyntax(node) ?? node;
-
-            Debug.Assert(result.Kind != LookupResultKind.Empty);
-            Debug.Assert(!result.Symbols.Any(s => s.IsIndexer()));
-
-            SymbolKind kind = result.Symbols[0].Kind;
-            if (!result.Symbols.All(static (s, kind) => s.Kind == kind, kind))
-            {
-                // ambiguous
-                return ResultSymbol(result, plainName, arity, node, diagnostics, false, wasError: out _, qualifierOpt);
-            }
-
-            if (kind is SymbolKind.Method or SymbolKind.Property
-                && IsMethodOrPropertyGroup(result.Symbols))
-            {
-                methodOrPropertyGroup.AddRange(result.Symbols);
-                return null;
-            }
-
-            return ResultSymbol(result, plainName, arity, node, diagnostics, false, wasError: out _, qualifierOpt);
-        }
-#nullable disable
 
         private static bool IsMethodOrPropertyGroup(ArrayBuilder<Symbol> members)
         {
@@ -10053,7 +10136,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // and an ambiguity error may be reported. Also additional checks are performed in runtime final validation 
                 // that are not performed at compile-time.
                 // Only if the set of final applicable candidates is empty we know for sure the call will fail at runtime.
-                var finalApplicableCandidates = GetCandidatesPassingFinalValidation(syntax, overloadResolutionResult, receiver, default(ImmutableArray<TypeWithAnnotations>), invokedAsExtensionMethod: false, diagnostics);
+                var finalApplicableCandidates = GetCandidatesPassingFinalValidation(syntax, overloadResolutionResult, receiver, default(ImmutableArray<TypeWithAnnotations>), isExtensionMethodGroup: false, diagnostics);
 
                 if (finalApplicableCandidates.Length == 1)
                 {
@@ -10416,7 +10499,9 @@ namespace Microsoft.CodeAnalysis.CSharp
                 { WasCompilerGenerated = true };
 
                 indexerOrSliceAccess = BindMethodGroupInvocation(syntax, syntax, method.Name, boundMethodGroup, analyzedArguments,
-                    diagnostics, queryClause: null, ignoreNormalFormIfHasValidParamsParameter: true, anyApplicableCandidates: out bool _).MakeCompilerGenerated();
+                    diagnostics, queryClause: null, ignoreNormalFormIfHasValidParamsParameter: true, anyApplicableCandidates: out bool _,
+                    disallowExpandedNonArrayParams: false,
+                    acceptOnlyMethods: true).MakeCompilerGenerated(); // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Test effect of acceptOnlyMethods value
 
                 analyzedArguments.Free();
             }
@@ -10544,7 +10629,9 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             return ResolveMethodGroup(
                 node, node.Syntax, node.Name, analyzedArguments, ref useSiteInfo,
-                options, returnRefKind: returnRefKind, returnType: returnType,
+                options,
+                acceptOnlyMethods: true, // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Confirm this value is appropriate for all consumers of the enclosing method and test effect of this value for all of them
+                returnRefKind: returnRefKind, returnType: returnType,
                 callingConventionInfo: callingConventionInfo);
         }
 
@@ -10555,6 +10642,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             AnalyzedArguments analyzedArguments,
             ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo,
             OverloadResolution.Options options,
+            bool acceptOnlyMethods,
             RefKind returnRefKind = default,
             TypeSymbol returnType = null,
             in CallingConventionInfo callingConventionInfo = default)
@@ -10562,6 +10650,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             var methodResolution = ResolveMethodGroupInternal(
                 node, expression, memberName, analyzedArguments, ref useSiteInfo,
                 options,
+                acceptOnlyMethods: acceptOnlyMethods,
                 returnRefKind: returnRefKind, returnType: returnType,
                 callingConvention: callingConventionInfo);
             if (methodResolution.IsEmpty && !methodResolution.HasAnyErrors)
@@ -10585,6 +10674,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             AnalyzedArguments analyzedArguments,
             ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo,
             OverloadResolution.Options options,
+            bool acceptOnlyMethods,
             RefKind returnRefKind = default,
             TypeSymbol returnType = null,
             in CallingConventionInfo callingConvention = default)
@@ -10604,6 +10694,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             var extensionMethodResolution = ResolveExtension(
                 expression, memberName, analyzedArguments, methodGroup.ReceiverOpt, methodGroup.TypeArgumentsOpt, options,
                 returnRefKind: returnRefKind, returnType: returnType, ref useSiteInfo,
+                acceptOnlyMethods: acceptOnlyMethods,
                 in callingConvention);
             bool preferExtensionMethodResolution = false;
 
@@ -10897,6 +10988,9 @@ namespace Microsoft.CodeAnalysis.CSharp
             useParams = false;
             MethodSymbol? foundMethod = null;
             var typeArguments = node.TypeArgumentsOpt;
+            int arity = typeArguments.IsDefaultOrEmpty ? 0 : typeArguments.Length;
+
+            // 1. instance methods
             if (node.ResultKind == LookupResultKind.Viable)
             {
                 var methods = ArrayBuilder<MethodSymbol>.GetInstance(capacity: node.Methods.Length);
@@ -10904,6 +10998,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                 {
                     switch (node.ReceiverOpt)
                     {
+                        case BoundTypeOrValueExpression:
+                            break;
                         case BoundTypeExpression:
                         case null: // if `using static Class` is in effect, the receiver is missing
                             if (!memberMethod.IsStatic) continue;
@@ -10915,7 +11011,6 @@ namespace Microsoft.CodeAnalysis.CSharp
                             break;
                     }
 
-                    int arity = typeArguments.IsDefaultOrEmpty ? 0 : typeArguments.Length;
                     if (memberMethod.Arity != arity)
                     {
                         // We have no way of inferring type arguments, so if the given type arguments
@@ -10956,52 +11051,63 @@ namespace Microsoft.CodeAnalysis.CSharp
                 }
             }
 
-            if (node.ReceiverOpt is not BoundTypeExpression && node.SearchExtensions)
+            // 2. extensions
+            if (node.SearchExtensions)
             {
-                var receiver = node.ReceiverOpt!;
-                var methodGroup = MethodGroup.GetInstance();
+                Debug.Assert(node.ReceiverOpt!.Type is not null); // extensions are only considered on member access
+
+                BoundExpression receiver = node.ReceiverOpt;
+                LookupOptions options = arity == 0 ? LookupOptions.AllMethodsOnArityZero : LookupOptions.Default;
+                var singleLookupResults = ArrayBuilder<SingleLookupResult>.GetInstance();
+                CompoundUseSiteInfo<AssemblySymbol> discardedUseSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded;
+
                 foreach (var scope in new ExtensionScopes(this))
                 {
-                    methodGroup.Clear();
-                    PopulateExtensionMethodsFromSingleBinder(scope, methodGroup, node.Syntax, receiver, node.Name, typeArguments, BindingDiagnosticBag.Discarded);
-                    var methods = ArrayBuilder<MethodSymbol>.GetInstance(capacity: methodGroup.Methods.Count);
-                    foreach (var extensionMethod in methodGroup.Methods)
+                    singleLookupResults.Clear();
+                    scope.Binder.EnumerateAllExtensionMembersInSingleBinder(singleLookupResults, node.Name, arity, options, originalBinder: this, ref discardedUseSiteInfo, ref discardedUseSiteInfo);
+
+                    var methods = ArrayBuilder<MethodSymbol>.GetInstance(capacity: singleLookupResults.Count);
+                    foreach (SingleLookupResult singleLookupResult in singleLookupResults)
                     {
-                        var substituted = typeArguments.IsDefaultOrEmpty ? extensionMethod : extensionMethod.Construct(typeArguments);
-
-                        var reduced = substituted.ReduceExtensionMethod(receiver.Type, Compilation, out bool wasFullyInferred);
-                        if (reduced is null)
+                        // Remove static/instance mismatches
+                        Symbol extensionMember = singleLookupResult.Symbol;
+                        bool memberCountsAsStatic = extensionMember is MethodSymbol { IsExtensionMethod: true } ? false : extensionMember.IsStatic;
+                        switch (node.ReceiverOpt)
                         {
-                            // Extension method was not applicable
-                            continue;
+                            case BoundTypeOrValueExpression:
+                                break;
+                            case BoundTypeExpression:
+                                if (!memberCountsAsStatic) continue;
+                                break;
+                            default:
+                                if (memberCountsAsStatic) continue;
+                                break;
                         }
 
-                        if (!wasFullyInferred)
+                        // Note: we only care about methods since we're already decided this is a method group (ie. not resolving to some other kind of extension member)
+                        if (extensionMember is MethodSymbol method)
                         {
-                            continue;
+                            var substituted = (MethodSymbol?)extensionMember.GetReducedAndFilteredSymbol(typeArguments, receiver.Type, Compilation, checkFullyInferred: true);
+                            if (substituted is not null)
+                            {
+                                methods.Add(substituted);
+                            }
                         }
-
-                        if (!satisfiesConstraintChecks(reduced))
-                        {
-                            continue;
-                        }
-
-                        methods.Add(reduced);
                     }
 
                     if (!OverloadResolution.FilterMethodsForUniqueSignature(methods, out useParams))
                     {
+                        singleLookupResults.Free();
                         methods.Free();
-                        methodGroup.Free();
                         return null;
                     }
 
-                    foreach (var reduced in methods)
+                    foreach (var method in methods)
                     {
-                        if (!isCandidateUnique(ref foundMethod, reduced))
+                        if (!isCandidateUnique(ref foundMethod, method))
                         {
+                            singleLookupResults.Free();
                             methods.Free();
-                            methodGroup.Free();
                             useParams = false;
                             return null;
                         }
@@ -11011,11 +11117,12 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                     if (foundMethod is not null)
                     {
-                        methodGroup.Free();
+                        singleLookupResults.Free();
                         return foundMethod;
                     }
                 }
-                methodGroup.Free();
+
+                singleLookupResults.Free();
             }
 
             useParams = false;

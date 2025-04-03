@@ -801,7 +801,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                         break;
                     case SyntaxKind.ClassDeclaration:
                     case SyntaxKind.RecordDeclaration:
-                        // PROTOTYPE likely needs work for semantic model
+                        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : likely needs work for semantic model
                         {
                             var typeDecl = (TypeDeclarationSyntax)memberDecl;
 
@@ -872,7 +872,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                     case SyntaxKind.ClassDeclaration:
                     case SyntaxKind.RecordDeclaration:
-                        // PROTOTYPE likely needs work for semantic model
+                        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : likely needs work for semantic model
                         {
                             var typeDecl = (TypeDeclarationSyntax)memberDecl;
                             return typeDecl.ParameterList is object &&
@@ -1091,7 +1091,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 case SyntaxKind.ClassDeclaration:
                 case SyntaxKind.RecordDeclaration:
-                    // PROTOTYPE likely needs work for semantic model
+                    // Tracked by https://github.com/dotnet/roslyn/issues/76130 : likely needs work for semantic model
                     {
                         SynthesizedPrimaryConstructor symbol = TryGetSynthesizedPrimaryConstructor((TypeDeclarationSyntax)node);
 
@@ -1651,7 +1651,6 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         private string GetDeclarationName(CSharpSyntaxNode declaration)
         {
-            // PROTOTYPE likely needs work for semantic model
             switch (declaration.Kind())
             {
                 case SyntaxKind.MethodDeclaration:
@@ -1831,13 +1830,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 }
 
                 // Handle the case of the implementation of a partial member.
-                Symbol partial = symbol switch
-                {
-                    MethodSymbol method => method.PartialImplementationPart,
-                    SourcePropertySymbol property => property.PartialImplementationPart,
-                    _ => null
-                };
-
+                Symbol partial = symbol.GetPartialImplementationPart();
                 if ((object)partial != null)
                 {
                     var loc = partial.GetFirstLocation();
@@ -2034,6 +2027,37 @@ namespace Microsoft.CodeAnalysis.CSharp
             return builder.ToImmutableAndFree();
         }
 
+        private ParameterSymbol GetExtensionParameterSymbol(
+            ParameterSyntax parameter,
+            CancellationToken cancellationToken)
+        {
+            Debug.Assert(parameter != null);
+
+            if (parameter.Parent is not ParameterListSyntax { Parent: ExtensionDeclarationSyntax extensionDecl })
+            {
+                return null;
+            }
+
+            INamedTypeSymbol extension = GetDeclaredSymbol(extensionDecl, cancellationToken);
+            if (extension is null)
+            {
+                return null;
+            }
+
+            IParameterSymbol extensionParameter = extension.ExtensionParameter;
+            foreach (var location in extensionParameter.Locations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (location.SourceTree == this.SyntaxTree && parameter.Span.Contains(location.SourceSpan))
+                {
+                    return extensionParameter.GetSymbol<ParameterSymbol>();
+                }
+            }
+
+            return null;
+        }
+
         private ParameterSymbol GetMethodParameterSymbol(
             ParameterSyntax parameter,
             CancellationToken cancellationToken)
@@ -2156,7 +2180,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             return
                 GetMethodParameterSymbol(declarationSyntax, cancellationToken) ??
                 GetIndexerParameterSymbol(declarationSyntax, cancellationToken) ??
-                GetDelegateParameterSymbol(declarationSyntax, cancellationToken);
+                GetDelegateParameterSymbol(declarationSyntax, cancellationToken) ??
+                GetExtensionParameterSymbol(declarationSyntax, cancellationToken);
         }
 
         /// <summary>

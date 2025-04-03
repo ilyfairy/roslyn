@@ -79,7 +79,7 @@
       <ForceIncludeInVSIX>true</ForceIncludeInVSIX>
       <PkgDefEntry>BindingRedirect</PkgDefEntry>
     </ProjectReference>
-    <ProjectReference Include="..\..\Tools\ExternalAccess\Razor\Microsoft.CodeAnalysis.ExternalAccess.Razor.csproj">
+    <ProjectReference Include="..\..\Tools\ExternalAccess\Razor\EditorFeatures\Microsoft.CodeAnalysis.ExternalAccess.Razor.csproj">
       <Name>Microsoft.CodeAnalysis.ExternalAccess.Razor</Name>
       <IncludeOutputGroupsInVSIX>BuiltProjectOutputGroup</IncludeOutputGroupsInVSIX>
       <ForceIncludeInVSIX>true</ForceIncludeInVSIX>
@@ -233,6 +233,12 @@
     <ProjectReference Include="..\Xaml\Impl\Microsoft.VisualStudio.LanguageServices.Xaml.csproj">
       <Name>XamlVisualStudio</Name>
       <IncludeOutputGroupsInVSIX>BuiltProjectOutputGroup;SatelliteDllsProjectOutputGroup</IncludeOutputGroupsInVSIX>
+      <PkgDefEntry>BindingRedirect</PkgDefEntry>
+    </ProjectReference>
+    <ProjectReference Include="..\ExternalAccess\Copilot\Microsoft.VisualStudio.LanguageServices.ExternalAccess.Copilot.csproj">
+      <Name>Microsoft.VisualStudio.LanguageServices.ExternalAccess.Copilot</Name>
+      <IncludeOutputGroupsInVSIX>BuiltProjectOutputGroup</IncludeOutputGroupsInVSIX>
+      <ForceIncludeInVSIX>true</ForceIncludeInVSIX>
       <PkgDefEntry>BindingRedirect</PkgDefEntry>
     </ProjectReference>
     <ProjectReference Include="..\..\Workspaces\Remote\Core\Microsoft.CodeAnalysis.Remote.Workspaces.csproj">

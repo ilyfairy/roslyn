@@ -337,8 +337,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 if (Format.CompilerInternalOptions.HasFlag(SymbolDisplayCompilerInternalOptions.UseMetadataMemberNames))
                 {
-                    var extensionIdentifier = underlyingTypeSymbol!.ExtensionName;
-                    Builder.Add(CreatePart(SymbolDisplayPartKind.ClassName, symbol, extensionIdentifier)); // PROTOTYPE revisit when displaying extensions in the IDE
+                    var extensionIdentifier = underlyingTypeSymbol!.ExtensionName; // Tracked by https://github.com/dotnet/roslyn/issues/76130 : use public API once it's available
+                    Builder.Add(CreatePart(SymbolDisplayPartKind.ClassName, symbol, extensionIdentifier));
                 }
                 else
                 {
@@ -427,7 +427,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                     if (symbol.IsExtension)
                     {
-                        addExtensionParameter(underlyingTypeSymbol);
+                        addExtensionParameter(symbol);
                     }
 
                     // TODO: do we want to skip these if we're being visited as a containing type?
@@ -436,7 +436,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
             else if (symbol.IsExtension)
             {
-                addExtensionParameter(underlyingTypeSymbol);
+                addExtensionParameter(symbol);
             }
             else
             {
@@ -455,13 +455,13 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             return;
 
-            void addExtensionParameter(NamedTypeSymbol? underlyingTypeSymbol) // PROTOTYPE use public API once it's available
+            void addExtensionParameter(INamedTypeSymbol symbol)
             {
                 if (!Format.CompilerInternalOptions.HasFlag(SymbolDisplayCompilerInternalOptions.UseMetadataMemberNames)
-                    && underlyingTypeSymbol!.ExtensionParameter is { } extensionParameter)
+                    && symbol.ExtensionParameter is { } extensionParameter)
                 {
                     AddPunctuation(SyntaxKind.OpenParenToken);
-                    AddParameterModifiersAndType(extensionParameter.GetPublicSymbol());
+                    AddParameterModifiersAndType(extensionParameter);
                     AddPunctuation(SyntaxKind.CloseParenToken);
                 }
             }

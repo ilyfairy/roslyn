@@ -9,20 +9,17 @@ using Microsoft.CodeAnalysis.PooledObjects;
 
 namespace Microsoft.CodeAnalysis.CSharp.Symbols
 {
-    internal sealed class SourceExtensionImplementationMethodSymbol : RewrittenMethodSymbol // PROTOTYPE: Do we need to implement ISynthesizedMethodBodyImplementationSymbol?
+    internal sealed class SourceExtensionImplementationMethodSymbol : RewrittenMethodSymbol // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Do we need to implement ISynthesizedMethodBodyImplementationSymbol?
     {
-        public const string StaticExtensionNamePrefix = "<StaticExtension>";
-        public const string InstanceExtensionNamePrefix = "<Extension>";
-
         public SourceExtensionImplementationMethodSymbol(MethodSymbol sourceMethod)
             : base(sourceMethod, TypeMap.Empty, sourceMethod.ContainingType.TypeParameters.Concat(sourceMethod.TypeParameters))
         {
-            Debug.Assert(sourceMethod.ContainingSymbol is NamedTypeSymbol { IsExtension: true });
+            Debug.Assert(sourceMethod.GetIsNewExtensionMember());
             Debug.Assert(sourceMethod.IsStatic || sourceMethod.ContainingType.ExtensionParameter is not null);
             Debug.Assert(!sourceMethod.IsExtern);
             Debug.Assert(!sourceMethod.IsExternal);
 
-            // PROTOTYPE: Are we creating type parameters with the right emit behavior? Attributes, etc.
+            // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Are we creating type parameters with the right emit behavior? Attributes, etc.
             //            Also, they should be IsImplicitlyDeclared
         }
 
@@ -30,23 +27,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
         public override bool IsGenericMethod => Arity != 0;
 
-        public override string Name
-        {
-            get
-            {
-                return GetImplementationName(_originalMethod);
-            }
-        }
-
-        public static string GetImplementationName(MethodSymbol originalMethod)
-        {
-            return (originalMethod.IsStatic ? StaticExtensionNamePrefix : InstanceExtensionNamePrefix) + originalMethod.Name;
-        }
-
         public override MethodKind MethodKind => MethodKind.Ordinary;
         public override bool IsImplicitlyDeclared => true;
 
-        internal override bool HasSpecialName => true; // PROTOTYPE: reconcile with spec
+        internal override bool HasSpecialName => true; // Tracked by https://github.com/dotnet/roslyn/issues/76130 : reconcile with spec
 
         internal override int ParameterCount
         {
@@ -56,7 +40,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
-        public sealed override bool IsExtensionMethod => false;
+        public sealed override bool IsExtensionMethod => !_originalMethod.IsStatic && _originalMethod.MethodKind is MethodKind.Ordinary;
         public sealed override bool IsVirtual => false;
 
         public sealed override bool IsOverride => false;
@@ -73,7 +57,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         public sealed override DllImportData? GetDllImportData() => null;
         internal sealed override bool IsExternal => false;
 
-        // PROTOTYPE: How doc comments are supposed to work? GetDocumentationCommentXml
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : How doc comments are supposed to work? GetDocumentationCommentXml
 
         internal sealed override bool IsDeclaredReadOnly => false;
 
@@ -81,7 +65,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
         internal sealed override void AddSynthesizedAttributes(PEModuleBuilder moduleBuilder, ref ArrayBuilder<CSharpAttributeData> attributes)
         {
-            _originalMethod.AddSynthesizedAttributes(moduleBuilder, ref attributes);
+            base.AddSynthesizedAttributes(moduleBuilder, ref attributes);
+            SourceMethodSymbol.AddSynthesizedAttributes(this, moduleBuilder, ref attributes);
         }
 
         public override bool IsStatic => true;
@@ -105,7 +90,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
             if (!_originalMethod.IsStatic)
             {
-                // PROTOTYPE: Need to confirm if this rewrite going to break LocalStateTracingInstrumenter
+                // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Need to confirm if this rewrite going to break LocalStateTracingInstrumenter
                 //            Specifically BoundParameterId, etc.   
                 parameters.Add(new ExtensionMetadataMethodParameterSymbol(this, ((SourceNamedTypeSymbol)_originalMethod.ContainingType).ExtensionParameter!));
             }

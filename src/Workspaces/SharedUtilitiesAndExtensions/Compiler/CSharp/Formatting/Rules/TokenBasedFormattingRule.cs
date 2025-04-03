@@ -8,7 +8,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp.Utilities;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Formatting.Rules;
-using Microsoft.CodeAnalysis.Shared.Extensions;
 using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp.Formatting;
@@ -328,10 +327,12 @@ internal sealed class TokenBasedFormattingRule : BaseFormattingRule
         // some * "(" cases
         if (currentToken.Kind() == SyntaxKind.OpenParenToken)
         {
-            if (previousToken.Kind() == SyntaxKind.IdentifierToken ||
-                previousToken.Kind() == SyntaxKind.DefaultKeyword ||
-                previousToken.Kind() == SyntaxKind.BaseKeyword ||
-                previousToken.Kind() == SyntaxKind.ThisKeyword ||
+            if (previousToken.Kind()
+                    is SyntaxKind.IdentifierToken
+                    or SyntaxKind.DefaultKeyword
+                    or SyntaxKind.BaseKeyword
+                    or SyntaxKind.ThisKeyword
+                    or SyntaxKind.ExtensionKeyword ||
                 previousToken.IsGenericGreaterThanToken() ||
                 currentToken.IsParenInArgumentList())
             {
