@@ -1132,6 +1132,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             {
                 diagnostics.Add(AccessCheck.GetProtectedMemberInSealedTypeError(ContainingType), location, this);
             }
+            else if (ContainingType is { IsExtension: true, ExtensionParameter.Name: "" } && !IsStatic)
+            {
+                diagnostics.Add(ErrorCode.ERR_InstanceMemberWithUnnamedExtensionsParameter, location, Name);
+            }
             else if (ContainingType.IsStatic && !IsStatic)
             {
                 ErrorCode errorCode = isIndexer ? ErrorCode.ERR_IndexerInStaticClass : ErrorCode.ERR_InstanceMemberInStaticClass;
@@ -1466,7 +1470,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
                 return (null, null);
             }
-            else if (IsIndexer && CSharpAttributeData.IsTargetEarlyAttribute(arguments.AttributeType, arguments.AttributeSyntax, AttributeDescription.OverloadResolutionPriorityAttribute))
+            else if ((IsIndexer || this.GetIsNewExtensionMember()) && CSharpAttributeData.IsTargetEarlyAttribute(arguments.AttributeType, arguments.AttributeSyntax, AttributeDescription.OverloadResolutionPriorityAttribute))
             {
                 (attributeData, boundAttribute) = arguments.Binder.GetAttribute(arguments.AttributeSyntax, arguments.AttributeType, beforeAttributePartBound: null, afterAttributePartBound: null, out var hasAnyDiagnostics);
 
@@ -1729,7 +1733,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
         internal sealed override int TryGetOverloadResolutionPriority()
         {
-            Debug.Assert(this.IsIndexer);
+            Debug.Assert(this.IsIndexer || this.GetIsNewExtensionMember());
             return GetEarlyDecodedWellKnownAttributeData()?.OverloadResolutionPriority ?? 0;
         }
 

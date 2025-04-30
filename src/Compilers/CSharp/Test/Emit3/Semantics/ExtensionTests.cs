@@ -542,7 +542,7 @@ public static class Extensions
         var src = $$"""
 public static class Extensions
 {
-    extension<T>(T)
+    extension<T>(T t)
     {
         void T() { }
     }
@@ -735,7 +735,7 @@ public static class Extensions
             // (14,20): error CS0117: 'string' does not contain a definition for 'M'
             //             string.M();
             Diagnostic(ErrorCode.ERR_NoSuchMember, "M").WithArguments("string", "M").WithLocation(14, 20),
-            // (17,9): error CS9282: Extension declarations can include only methods or properties
+            // (17,9): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         extension(string) { public static void M() { } }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "extension").WithLocation(17, 9));
 
@@ -948,6 +948,618 @@ public static class Extensions
     }
 
     [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78222")]
+    public void ExtensionInInterface()
+    {
+        var src = """
+interface IInterface
+{
+    extension(object)
+    {
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,5): error CS9283: Extensions must be declared in a top-level, non-generic, static class
+            //     extension(object)
+            Diagnostic(ErrorCode.ERR_BadExtensionContainingType, "extension").WithLocation(3, 5)
+        );
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78222")]
+    public void ExtensionInClass()
+    {
+        var src = """
+class SomeClass
+{
+    extension(object)
+    {
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,5): error CS9283: Extensions must be declared in a top-level, non-generic, static class
+            //     extension(object)
+            Diagnostic(ErrorCode.ERR_BadExtensionContainingType, "extension").WithLocation(3, 5)
+        );
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78222")]
+    public void ExtensionInStruct()
+    {
+        var src = """
+struct SomeStruct
+{
+    extension(object)
+    {
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,5): error CS9283: Extensions must be declared in a top-level, non-generic, static class
+            //     extension(object)
+            Diagnostic(ErrorCode.ERR_BadExtensionContainingType, "extension").WithLocation(3, 5)
+        );
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78222")]
+    public void ExtensionInRecordClass()
+    {
+        var src = """
+record class SomeRecord
+{
+    extension(object)
+    {
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,5): error CS9283: Extensions must be declared in a top-level, non-generic, static class
+            //     extension(object)
+            Diagnostic(ErrorCode.ERR_BadExtensionContainingType, "extension").WithLocation(3, 5)
+        );
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78222")]
+    public void ExtensionInRecordStruct()
+    {
+        var src = """
+record struct SomeRecord
+{
+    extension(object)
+    {
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,5): error CS9283: Extensions must be declared in a top-level, non-generic, static class
+            //     extension(object)
+            Diagnostic(ErrorCode.ERR_BadExtensionContainingType, "extension").WithLocation(3, 5)
+        );
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78222")]
+    public void ExtensionInInterfaceWithVariance()
+    {
+        var src = """
+interface IInterface<in T>
+{
+    extension(object)
+    {
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,5): error CS9283: Extensions must be declared in a top-level, non-generic, static class
+            //     extension(object)
+            Diagnostic(ErrorCode.ERR_BadExtensionContainingType, "extension").WithLocation(3, 5)
+        );
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78135")]
+    public void ExtensionWithCapturing()
+    {
+        var src = """
+using System;
+using System.Text;
+
+var sb = new StringBuilder("Info: ");
+StringBuilder.Inspect(sb);
+
+public static class Extensions
+{
+    extension(StringBuilder)
+    {
+        public static StringBuilder Inspect(StringBuilder sb)
+        {
+            var s = () =>
+            {
+                foreach (char c in sb.ToString())
+                {
+                    Console.Write(c);
+                }
+            };
+            s();
+            return sb;
+        }
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        var verifier = CompileAndVerify(comp, expectedOutput: """
+            Info: 
+            """, expectedReturnCode: 0, trimOutput: false);
+
+        VerifyTypeIL(verifier, "Extensions",
+            """
+            .class public auto ansi abstract sealed beforefieldinit Extensions
+                extends [netstandard]System.Object
+            {
+                .custom instance void [netstandard]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = (
+                    01 00 00 00
+                )
+                // Nested Types
+                .class nested public auto ansi sealed beforefieldinit '<>E__0'
+                    extends [netstandard]System.Object
+                {
+                    // Methods
+                    .method private hidebysig specialname static 
+                        void '<Extension>$' (
+                            class [netstandard]System.Text.StringBuilder ''
+                        ) cil managed 
+                    {
+                        .custom instance void [netstandard]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
+                            01 00 00 00
+                        )
+                        // Method begins at RVA 0x20a5
+                        // Code size 1 (0x1)
+                        .maxstack 8
+                        IL_0000: ret
+                    } // end of method '<>E__0'::'<Extension>$'
+                    .method public hidebysig static 
+                        class [netstandard]System.Text.StringBuilder Inspect (
+                            class [netstandard]System.Text.StringBuilder sb
+                        ) cil managed 
+                    {
+                        // Method begins at RVA 0x20a7
+                        // Code size 2 (0x2)
+                        .maxstack 8
+                        IL_0000: ldnull
+                        IL_0001: throw
+                    } // end of method '<>E__0'::Inspect
+                } // end of class <>E__0
+                .class nested private auto ansi sealed beforefieldinit '<>c__DisplayClass1_0'
+                    extends [netstandard]System.Object
+                {
+                    .custom instance void [netstandard]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
+                        01 00 00 00
+                    )
+                    // Fields
+                    .field public class [netstandard]System.Text.StringBuilder sb
+                    // Methods
+                    .method public hidebysig specialname rtspecialname 
+                        instance void .ctor () cil managed 
+                    {
+                        // Method begins at RVA 0x2079
+                        // Code size 7 (0x7)
+                        .maxstack 8
+                        IL_0000: ldarg.0
+                        IL_0001: call instance void [netstandard]System.Object::.ctor()
+                        IL_0006: ret
+                    } // end of method '<>c__DisplayClass1_0'::.ctor
+                    .method assembly hidebysig 
+                        instance void '<Inspect>b__0' () cil managed 
+                    {
+                        // Method begins at RVA 0x20ac
+                        // Code size 42 (0x2a)
+                        .maxstack 2
+                        .locals init (
+                            [0] string,
+                            [1] int32
+                        )
+                        IL_0000: ldarg.0
+                        IL_0001: ldfld class [netstandard]System.Text.StringBuilder Extensions/'<>c__DisplayClass1_0'::sb
+                        IL_0006: callvirt instance string [netstandard]System.Object::ToString()
+                        IL_000b: stloc.0
+                        IL_000c: ldc.i4.0
+                        IL_000d: stloc.1
+                        IL_000e: br.s IL_0020
+                        // loop start (head: IL_0020)
+                            IL_0010: ldloc.0
+                            IL_0011: ldloc.1
+                            IL_0012: callvirt instance char [netstandard]System.String::get_Chars(int32)
+                            IL_0017: call void [netstandard]System.Console::Write(char)
+                            IL_001c: ldloc.1
+                            IL_001d: ldc.i4.1
+                            IL_001e: add
+                            IL_001f: stloc.1
+                            IL_0020: ldloc.1
+                            IL_0021: ldloc.0
+                            IL_0022: callvirt instance int32 [netstandard]System.String::get_Length()
+                            IL_0027: blt.s IL_0010
+                        // end loop
+                        IL_0029: ret
+                    } // end of method '<>c__DisplayClass1_0'::'<Inspect>b__0'
+                } // end of class <>c__DisplayClass1_0
+                // Methods
+                .method public hidebysig static 
+                    class [netstandard]System.Text.StringBuilder Inspect (
+                        class [netstandard]System.Text.StringBuilder sb
+                    ) cil managed 
+                {
+                    // Method begins at RVA 0x2081
+                    // Code size 35 (0x23)
+                    .maxstack 8
+                    IL_0000: newobj instance void Extensions/'<>c__DisplayClass1_0'::.ctor()
+                    IL_0005: dup
+                    IL_0006: ldarg.0
+                    IL_0007: stfld class [netstandard]System.Text.StringBuilder Extensions/'<>c__DisplayClass1_0'::sb
+                    IL_000c: dup
+                    IL_000d: ldftn instance void Extensions/'<>c__DisplayClass1_0'::'<Inspect>b__0'()
+                    IL_0013: newobj instance void [netstandard]System.Action::.ctor(object, native int)
+                    IL_0018: callvirt instance void [netstandard]System.Action::Invoke()
+                    IL_001d: ldfld class [netstandard]System.Text.StringBuilder Extensions/'<>c__DisplayClass1_0'::sb
+                    IL_0022: ret
+                } // end of method Extensions::Inspect
+            } // end of class Extensions
+            """);
+
+        var tree = comp.SyntaxTrees[0];
+        var model = comp.GetSemanticModel(tree);
+        var extension1 = tree.GetRoot().DescendantNodes().OfType<ExtensionDeclarationSyntax>().First();
+        var symbol1 = model.GetDeclaredSymbol(extension1);
+        var sourceExtension1 = symbol1.GetSymbol<SourceNamedTypeSymbol>();
+        Assert.Equal("<>E__0", symbol1.MetadataName);
+        Assert.Equal("Extensions.<>E__0", symbol1.ToTestDisplayString());
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78135")]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78042")]
+    public void ExtensionWithCapturing2()
+    {
+        var src = """
+using System;
+
+var a = int.DoSomething();
+a();
+
+public static class IntExt
+{
+    extension(int)
+    {
+        public static Action DoSomething()
+        {
+            var b = 7;
+            Action a = () =>
+            {
+                int a = 123;
+                Console.WriteLine(a);
+                b++;
+                Console.WriteLine(b);
+            };
+            Console.WriteLine("Some data");
+            ++b;
+            return a;
+        }
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        var verifier = CompileAndVerify(comp, expectedOutput: """
+            Some data
+            123
+            9
+
+            """, expectedReturnCode: 0, trimOutput: false);
+
+        VerifyTypeIL(verifier, "IntExt",
+            """
+            .class public auto ansi abstract sealed beforefieldinit IntExt
+                extends [netstandard]System.Object
+            {
+                .custom instance void [netstandard]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = (
+                    01 00 00 00
+                )
+                // Nested Types
+                .class nested public auto ansi sealed beforefieldinit '<>E__0'
+                    extends [netstandard]System.Object
+                {
+                    // Methods
+                    .method private hidebysig specialname static 
+                        void '<Extension>$' (
+                            int32 ''
+                        ) cil managed 
+                    {
+                        .custom instance void [netstandard]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
+                            01 00 00 00
+                        )
+                        // Method begins at RVA 0x20bc
+                        // Code size 1 (0x1)
+                        .maxstack 8
+                        IL_0000: ret
+                    } // end of method '<>E__0'::'<Extension>$'
+                    .method public hidebysig static 
+                        class [netstandard]System.Action DoSomething () cil managed 
+                    {
+                        // Method begins at RVA 0x20be
+                        // Code size 2 (0x2)
+                        .maxstack 8
+                        IL_0000: ldnull
+                        IL_0001: throw
+                    } // end of method '<>E__0'::DoSomething
+                } // end of class <>E__0
+                .class nested private auto ansi sealed beforefieldinit '<>c__DisplayClass1_0'
+                    extends [netstandard]System.Object
+                {
+                    .custom instance void [netstandard]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
+                        01 00 00 00
+                    )
+                    // Fields
+                    .field public int32 b
+                    // Methods
+                    .method public hidebysig specialname rtspecialname 
+                        instance void .ctor () cil managed 
+                    {
+                        // Method begins at RVA 0x2073
+                        // Code size 7 (0x7)
+                        .maxstack 8
+                        IL_0000: ldarg.0
+                        IL_0001: call instance void [netstandard]System.Object::.ctor()
+                        IL_0006: ret
+                    } // end of method '<>c__DisplayClass1_0'::.ctor
+                    .method assembly hidebysig 
+                        instance void '<DoSomething>b__0' () cil managed 
+                    {
+                        // Method begins at RVA 0x20c4
+                        // Code size 35 (0x23)
+                        .maxstack 3
+                        .locals init (
+                            [0] int32
+                        )
+                        IL_0000: ldc.i4.s 123
+                        IL_0002: call void [netstandard]System.Console::WriteLine(int32)
+                        IL_0007: ldarg.0
+                        IL_0008: ldfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                        IL_000d: stloc.0
+                        IL_000e: ldarg.0
+                        IL_000f: ldloc.0
+                        IL_0010: ldc.i4.1
+                        IL_0011: add
+                        IL_0012: stfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                        IL_0017: ldarg.0
+                        IL_0018: ldfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                        IL_001d: call void [netstandard]System.Console::WriteLine(int32)
+                        IL_0022: ret
+                    } // end of method '<>c__DisplayClass1_0'::'<DoSomething>b__0'
+                } // end of class <>c__DisplayClass1_0
+                // Methods
+                .method public hidebysig static 
+                    class [netstandard]System.Action DoSomething () cil managed 
+                {
+                    // Method begins at RVA 0x207c
+                    // Code size 52 (0x34)
+                    .maxstack 3
+                    .locals init (
+                        [0] class [netstandard]System.Action,
+                        [1] int32
+                    )
+                    IL_0000: newobj instance void IntExt/'<>c__DisplayClass1_0'::.ctor()
+                    IL_0005: dup
+                    IL_0006: ldc.i4.7
+                    IL_0007: stfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                    IL_000c: dup
+                    IL_000d: ldftn instance void IntExt/'<>c__DisplayClass1_0'::'<DoSomething>b__0'()
+                    IL_0013: newobj instance void [netstandard]System.Action::.ctor(object, native int)
+                    IL_0018: stloc.0
+                    IL_0019: ldstr "Some data"
+                    IL_001e: call void [netstandard]System.Console::WriteLine(string)
+                    IL_0023: dup
+                    IL_0024: ldfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                    IL_0029: ldc.i4.1
+                    IL_002a: add
+                    IL_002b: stloc.1
+                    IL_002c: ldloc.1
+                    IL_002d: stfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                    IL_0032: ldloc.0
+                    IL_0033: ret
+                } // end of method IntExt::DoSomething
+            } // end of class IntExt
+            """
+        );
+
+        var tree = comp.SyntaxTrees[0];
+        var model = comp.GetSemanticModel(tree);
+        var extension1 = tree.GetRoot().DescendantNodes().OfType<ExtensionDeclarationSyntax>().First();
+        var symbol1 = model.GetDeclaredSymbol(extension1);
+        var sourceExtension1 = symbol1.GetSymbol<SourceNamedTypeSymbol>();
+        Assert.Equal("<>E__0", symbol1.MetadataName);
+        Assert.Equal("IntExt.<>E__0", symbol1.ToTestDisplayString());
+    }
+
+    [Fact]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78135")]
+    [WorkItem("https://github.com/dotnet/roslyn/issues/78042")]
+    public void ExtensionWithCapturing_LocalFunction()
+    {
+        var src = """
+using System;
+
+var a = int.DoSomething();
+a();
+
+public static class IntExt
+{
+    extension(int)
+    {
+        public static Action DoSomething()
+        {
+            var b = 7;
+            Console.WriteLine("Some data");
+            ++b;
+            return Do;
+
+            void Do(){
+                int a = 123;
+                Console.WriteLine(a);
+                b++;
+                Console.WriteLine(b);
+            }
+        }
+    }
+}
+""";
+
+        var comp = CreateCompilation(src);
+        var verifier = CompileAndVerify(comp, expectedOutput: """
+            Some data
+            123
+            9
+
+            """, expectedReturnCode: 0, trimOutput: false);
+
+        VerifyTypeIL(verifier, "IntExt",
+            """
+            .class public auto ansi abstract sealed beforefieldinit IntExt
+                extends [netstandard]System.Object
+            {
+                .custom instance void [netstandard]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = (
+                    01 00 00 00
+                )
+                // Nested Types
+                .class nested public auto ansi sealed beforefieldinit '<>E__0'
+                    extends [netstandard]System.Object
+                {
+                    // Methods
+                    .method private hidebysig specialname static 
+                        void '<Extension>$' (
+                            int32 ''
+                        ) cil managed 
+                    {
+                        .custom instance void [netstandard]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
+                            01 00 00 00
+                        )
+                        // Method begins at RVA 0x20ba
+                        // Code size 1 (0x1)
+                        .maxstack 8
+                        IL_0000: ret
+                    } // end of method '<>E__0'::'<Extension>$'
+                    .method public hidebysig static 
+                        class [netstandard]System.Action DoSomething () cil managed 
+                    {
+                        // Method begins at RVA 0x20bc
+                        // Code size 2 (0x2)
+                        .maxstack 8
+                        IL_0000: ldnull
+                        IL_0001: throw
+                    } // end of method '<>E__0'::DoSomething
+                } // end of class <>E__0
+                .class nested private auto ansi sealed beforefieldinit '<>c__DisplayClass1_0'
+                    extends [netstandard]System.Object
+                {
+                    .custom instance void [netstandard]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
+                        01 00 00 00
+                    )
+                    // Fields
+                    .field public int32 b
+                    // Methods
+                    .method public hidebysig specialname rtspecialname 
+                        instance void .ctor () cil managed 
+                    {
+                        // Method begins at RVA 0x2073
+                        // Code size 7 (0x7)
+                        .maxstack 8
+                        IL_0000: ldarg.0
+                        IL_0001: call instance void [netstandard]System.Object::.ctor()
+                        IL_0006: ret
+                    } // end of method '<>c__DisplayClass1_0'::.ctor
+                    .method assembly hidebysig 
+                        instance void '<DoSomething>b__0' () cil managed 
+                    {
+                        // Method begins at RVA 0x20c0
+                        // Code size 35 (0x23)
+                        .maxstack 3
+                        .locals init (
+                            [0] int32
+                        )
+                        IL_0000: ldc.i4.s 123
+                        IL_0002: call void [netstandard]System.Console::WriteLine(int32)
+                        IL_0007: ldarg.0
+                        IL_0008: ldfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                        IL_000d: stloc.0
+                        IL_000e: ldarg.0
+                        IL_000f: ldloc.0
+                        IL_0010: ldc.i4.1
+                        IL_0011: add
+                        IL_0012: stfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                        IL_0017: ldarg.0
+                        IL_0018: ldfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                        IL_001d: call void [netstandard]System.Console::WriteLine(int32)
+                        IL_0022: ret
+                    } // end of method '<>c__DisplayClass1_0'::'<DoSomething>b__0'
+                } // end of class <>c__DisplayClass1_0
+                // Methods
+                .method public hidebysig static 
+                    class [netstandard]System.Action DoSomething () cil managed 
+                {
+                    // Method begins at RVA 0x207c
+                    // Code size 50 (0x32)
+                    .maxstack 3
+                    .locals init (
+                        [0] int32
+                    )
+                    IL_0000: newobj instance void IntExt/'<>c__DisplayClass1_0'::.ctor()
+                    IL_0005: dup
+                    IL_0006: ldc.i4.7
+                    IL_0007: stfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                    IL_000c: ldstr "Some data"
+                    IL_0011: call void [netstandard]System.Console::WriteLine(string)
+                    IL_0016: dup
+                    IL_0017: ldfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                    IL_001c: ldc.i4.1
+                    IL_001d: add
+                    IL_001e: stloc.0
+                    IL_001f: dup
+                    IL_0020: ldloc.0
+                    IL_0021: stfld int32 IntExt/'<>c__DisplayClass1_0'::b
+                    IL_0026: ldftn instance void IntExt/'<>c__DisplayClass1_0'::'<DoSomething>b__0'()
+                    IL_002c: newobj instance void [netstandard]System.Action::.ctor(object, native int)
+                    IL_0031: ret
+                } // end of method IntExt::DoSomething
+            } // end of class IntExt
+            """
+        );
+
+        var tree = comp.SyntaxTrees[0];
+        var model = comp.GetSemanticModel(tree);
+        var extension1 = tree.GetRoot().DescendantNodes().OfType<ExtensionDeclarationSyntax>().First();
+        var symbol1 = model.GetDeclaredSymbol(extension1);
+        var sourceExtension1 = symbol1.GetSymbol<SourceNamedTypeSymbol>();
+        Assert.Equal("<>E__0", symbol1.MetadataName);
+        Assert.Equal("IntExt.<>E__0", symbol1.ToTestDisplayString());
+    }
+
+    [Fact]
     public void ExtensionIndex_TwoExtensions_SameSignatures_02()
     {
         var src = """
@@ -1152,7 +1764,7 @@ public static class Extensions
         } // end of method '<>E__0'::M
     } // end of class <>E__0
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M (
             object o
         ) cil managed 
@@ -1258,7 +1870,7 @@ public static class Extensions
         } // end of method '<>E__0'::M
     } // end of class <>E__0
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M () cil managed 
     {
         // Method begins at RVA 0x2067
@@ -1396,7 +2008,7 @@ public static class Extensions
         }
     } // end of class <>E__0
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         int32 get_Property (
             object o
         ) cil managed 
@@ -1407,7 +2019,7 @@ public static class Extensions
         IL_0000: ldc.i4.s 42
         IL_0002: ret
     } // end of method Extensions::get_Property
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void set_Property (
             object o,
             int32 'value'
@@ -1451,7 +2063,7 @@ public static class Extensions
 """;
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
-            // (5,13): error CS9282: Extension declarations can include only methods or properties
+            // (5,13): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         int Property { get; set; }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Property").WithLocation(5, 13));
 
@@ -1565,7 +2177,7 @@ extends [netstandard]System.Object
         }
     } // end of class <>E__0
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         int32 get_Property () cil managed 
     {
         // Method begins at RVA 0x2067
@@ -1574,7 +2186,7 @@ extends [netstandard]System.Object
         IL_0000: ldc.i4.s 42
         IL_0002: ret
     } // end of method Extensions::get_Property
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void set_Property (
             int32 'value'
         ) cil managed 
@@ -1610,7 +2222,7 @@ public static class Extensions
 """;
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
-            // (5,20): error CS9282: Extension declarations can include only methods or properties
+            // (5,20): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         static int Property { get; set; }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Property").WithLocation(5, 20));
 
@@ -1709,7 +2321,7 @@ public static class Extensions
         }
     } // end of class <>E__0
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         int32 get_Item (
             object o,
             int32 i
@@ -1721,7 +2333,7 @@ public static class Extensions
         IL_0000: ldc.i4.s 42
         IL_0002: ret
     } // end of method Extensions::get_Item
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void set_Item (
             object o,
             int32 i,
@@ -1758,6 +2370,31 @@ public static class Extensions
             //     extension(object o)
             Diagnostic(ErrorCode.ERR_ExtensionAttrNotFound, "extension").WithArguments("System.Runtime.CompilerServices.ExtensionAttribute").WithLocation(3, 5)
             );
+    }
+
+    [Fact]
+    public void Member_InstanceIndexer_Metadata()
+    {
+        string libSrc = """
+public static class E
+{
+    extension(int i)
+    {
+        public int this[int j] { get => i + j; set { } }
+    }
+}
+""";
+        var libComp = CreateCompilation(libSrc);
+
+        string source = """
+System.Console.Write(42[1]);
+""";
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : add full support for indexers or disallow them
+        var comp = CreateCompilation(source, references: [libComp.EmitToImageReference()]);
+        comp.VerifyEmitDiagnostics(
+            // (1,22): error CS0021: Cannot apply indexing with [] to an expression of type 'int'
+            // System.Console.Write(42[1]);
+            Diagnostic(ErrorCode.ERR_BadIndexLHS, "42[1]").WithArguments("int").WithLocation(1, 22));
     }
 
     [Fact]
@@ -1798,7 +2435,7 @@ public static class Extensions
 """;
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
-            // (5,15): error CS9282: Extension declarations can include only methods or properties
+            // (5,15): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         class Nested { }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Nested").WithLocation(5, 15));
 
@@ -1827,7 +2464,7 @@ public static class Extensions
             // (3,25): error CS1520: Method must have a return type
             //     extension(object) { Extensions() { } }
             Diagnostic(ErrorCode.ERR_MemberNeedsType, "Extensions").WithLocation(3, 25),
-            // (3,25): error CS9282: Extension declarations can include only methods or properties
+            // (3,25): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //     extension(object) { Extensions() { } }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Extensions").WithLocation(3, 25));
 
@@ -1855,7 +2492,7 @@ public static class Extensions
 """;
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
-            // (3,26): error CS9282: Extension declarations can include only methods or properties
+            // (3,26): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //     extension(object) { ~Extensions() { } }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Extensions").WithLocation(3, 26));
 
@@ -1886,7 +2523,7 @@ public static class Extensions
             // (1,18): error CS1061: 'object' does not contain a definition for 'field' and no accessible extension method 'field' accepting a first argument of type 'object' could be found (are you missing a using directive or an assembly reference?)
             // _ = new object().field;
             Diagnostic(ErrorCode.ERR_NoSuchMemberOrExtension, "field").WithArguments("object", "field").WithLocation(1, 18),
-            // (5,31): error CS9282: Extension declarations can include only methods or properties
+            // (5,31): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //     extension(object o) { int field = 0; }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "field").WithLocation(5, 31),
             // (5,31): warning CS0169: The field 'Extensions.extension(object).field' is never used
@@ -1915,7 +2552,7 @@ public static class Extensions
 """;
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
-            // (3,35): error CS9282: Extension declarations can include only methods or properties
+            // (3,35): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //     extension(object) { const int i = 0; }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "i").WithLocation(3, 35));
 
@@ -1951,13 +2588,13 @@ public static class Extensions
             // (9,31): error CS0541: 'Extensions.extension(object).E': explicit interface declaration can only be declared in a class, record, struct or interface
             //         event System.Action I.E { add { } remove { } }
             Diagnostic(ErrorCode.ERR_ExplicitInterfaceImplementationInNonClassOrStruct, "E").WithArguments("Extensions.extension(object).E").WithLocation(9, 31),
-            // (9,31): error CS9282: Extension declarations can include only methods or properties
+            // (9,31): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         event System.Action I.E { add { } remove { } }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "E").WithLocation(9, 31),
-            // (9,35): error CS9282: Extension declarations can include only methods or properties
+            // (9,35): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         event System.Action I.E { add { } remove { } }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "add").WithLocation(9, 35),
-            // (9,43): error CS9282: Extension declarations can include only methods or properties
+            // (9,43): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         event System.Action I.E { add { } remove { } }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "remove").WithLocation(9, 43));
     }
@@ -2313,7 +2950,7 @@ public static class Extensions
         var src = """
 public static class Extensions
 {
-    extension(T)
+    extension(T t)
     {
         void T() { }
     }
@@ -2322,7 +2959,7 @@ public static class Extensions
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
             // (3,15): error CS0246: The type or namespace name 'T' could not be found (are you missing a using directive or an assembly reference?)
-            //     extension(T)
+            //     extension(T t)
             Diagnostic(ErrorCode.ERR_SingleTypeNameNotFound, "T").WithArguments("T").WithLocation(3, 15));
     }
 
@@ -2521,7 +3158,10 @@ public static class Extensions
             Diagnostic(ErrorCode.WRN_RefReadonlyParameterDefaultValue, "System.Runtime.InteropServices.DefaultParameterValue(1)").WithArguments("i").WithLocation(3, 57),
             // (4,57): warning CS9200: A default value is specified for 'ref readonly' parameter '', but 'ref readonly' should be used only for references. Consider declaring the parameter as 'in'.
             //     extension([System.Runtime.InteropServices.Optional, System.Runtime.InteropServices.DefaultParameterValue(2)] ref readonly int) { }
-            Diagnostic(ErrorCode.WRN_RefReadonlyParameterDefaultValue, "System.Runtime.InteropServices.DefaultParameterValue(2)").WithArguments("").WithLocation(4, 57));
+            Diagnostic(ErrorCode.WRN_RefReadonlyParameterDefaultValue, "System.Runtime.InteropServices.DefaultParameterValue(2)").WithArguments("").WithLocation(4, 57),
+            // (4,127): error CS9305: Cannot use modifiers on the unnamed receiver parameter of extension block
+            //     extension([System.Runtime.InteropServices.Optional, System.Runtime.InteropServices.DefaultParameterValue(2)] ref readonly int) { }
+            Diagnostic(ErrorCode.ERR_ModifierOnUnnamedReceiverParameter, "int").WithLocation(4, 127));
     }
 
     [Fact]
@@ -2842,7 +3482,32 @@ public static class Extensions
     }
 
     [Fact]
-    public void ReceiverParameter_RefReadonly()
+    public void ReceiverParameter_In_03()
+    {
+        var src = """
+public static class Extensions
+{
+    extension(in int i) { }
+    extension(in object o) { }
+    extension<T>(in T t) { }
+    extension<T>(in T t) where T : struct { }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,18): error CS9301: The 'in' or 'ref readonly' receiver parameter of extension must be a concrete (non-generic) value type.
+            //     extension(in object o) { }
+            Diagnostic(ErrorCode.ERR_InExtensionParameterMustBeValueType, "object").WithLocation(4, 18),
+            // (5,21): error CS9301: The 'in' or 'ref readonly' receiver parameter of extension must be a concrete (non-generic) value type.
+            //     extension<T>(in T t) { }
+            Diagnostic(ErrorCode.ERR_InExtensionParameterMustBeValueType, "T").WithLocation(5, 21),
+            // (6,21): error CS9301: The 'in' or 'ref readonly' receiver parameter of extension must be a concrete (non-generic) value type.
+            //     extension<T>(in T t) where T : struct { }
+            Diagnostic(ErrorCode.ERR_InExtensionParameterMustBeValueType, "T").WithLocation(6, 21));
+    }
+
+    [Fact]
+    public void ReceiverParameter_RefReadonly_01()
     {
         var src = """
 int i = 42;
@@ -2854,7 +3519,6 @@ public static class Extensions
     {
         public void M() { System.Console.Write(i); }
     }
-    extension(ref readonly int) { }
     static void M2(this ref readonly int i) { }
 }
 """;
@@ -2863,8 +3527,32 @@ public static class Extensions
         CompileAndVerify(comp, symbolValidator: (m) =>
         {
             Assert.Equal(RefKind.RefReadOnlyParameter, m.GlobalNamespace.GetMember<MethodSymbol>("Extensions.<>E__0.<Extension>$").Parameters[0].RefKind);
-            Assert.Equal(RefKind.RefReadOnlyParameter, m.GlobalNamespace.GetMember<MethodSymbol>("Extensions.<>E__1.<Extension>$").Parameters[0].RefKind);
         }, expectedOutput: "42").VerifyDiagnostics();
+    }
+
+    [Fact]
+    public void ReceiverParameter_RefReadonly_02()
+    {
+        var src = """
+public static class E
+{
+    extension(ref readonly int i) { }
+    extension(ref readonly object o) { }
+    extension<T>(ref readonly T o) { }
+    extension<T>(ref readonly T o) where T : struct { }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,28): error CS9301: The 'in' or 'ref readonly' receiver parameter of extension must be a concrete (non-generic) value type.
+            //     extension(ref readonly object o) { }
+            Diagnostic(ErrorCode.ERR_InExtensionParameterMustBeValueType, "object").WithLocation(4, 28),
+            // (5,31): error CS9301: The 'in' or 'ref readonly' receiver parameter of extension must be a concrete (non-generic) value type.
+            //     extension<T>(ref readonly T o) { }
+            Diagnostic(ErrorCode.ERR_InExtensionParameterMustBeValueType, "T").WithLocation(5, 31),
+            // (6,31): error CS9301: The 'in' or 'ref readonly' receiver parameter of extension must be a concrete (non-generic) value type.
+            //     extension<T>(ref readonly T o) where T : struct { }
+            Diagnostic(ErrorCode.ERR_InExtensionParameterMustBeValueType, "T").WithLocation(6, 31));
     }
 
     [Fact]
@@ -3070,6 +3758,41 @@ public static class Extensions
 """;
         var comp = CreateCompilation(src);
         CompileAndVerify(comp, expectedOutput: "(42, 43)").VerifyDiagnostics();
+
+        src = """
+static class E
+{
+    extension(ref string s) // 1
+    {
+        public static void M() { }
+        public static int P => 0;
+    }
+    extension<T>(ref T t) // 2
+    {
+        public static void M2() { }
+        public static int P2 => 0;
+    }
+
+    extension(ref int i)
+    {
+        public static void M3() { }
+        public static int P3 => 0;
+    }
+    extension<T>(ref T t) where T : struct
+    {
+        public static void M4() { }
+        public static int P4 => 0;
+    }
+}
+""";
+        comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,19): error CS9300: The 'ref' receiver parameter of an extension block must be a value type or a generic type constrained to struct.
+            //     extension(ref string s) // 1
+            Diagnostic(ErrorCode.ERR_RefExtensionParameterMustBeValueTypeOrConstrainedToOne, "string").WithLocation(3, 19),
+            // (8,22): error CS9300: The 'ref' receiver parameter of an extension block must be a value type or a generic type constrained to struct.
+            //     extension<T>(ref T t) // 2
+            Diagnostic(ErrorCode.ERR_RefExtensionParameterMustBeValueTypeOrConstrainedToOne, "T").WithLocation(8, 22));
     }
 
     [Fact]
@@ -3154,15 +3877,15 @@ public static class Extensions
         var src = """
 public static class Extensions
 {
-    extension(ref System.ArgIterator) { }
-    extension(ref System.Span<int>) { }
+    extension(ref System.ArgIterator a) { }
+    extension(ref System.Span<int> s) { }
 }
 """;
         var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
         comp.VerifyEmitDiagnostics(
             // (3,15): error CS1601: Cannot make reference to variable of type 'ArgIterator'
-            //     extension(ref System.ArgIterator) { }
-            Diagnostic(ErrorCode.ERR_MethodArgCantBeRefAny, "ref System.ArgIterator").WithArguments("System.ArgIterator").WithLocation(3, 15));
+            //     extension(ref System.ArgIterator a) { }
+            Diagnostic(ErrorCode.ERR_MethodArgCantBeRefAny, "ref System.ArgIterator a").WithArguments("System.ArgIterator").WithLocation(3, 15));
     }
 
     [Fact]
@@ -3223,10 +3946,6 @@ static class Extensions
     extension(scoped ref int receiver)
     {
     }
-
-    extension(scoped ref int)
-    {
-    }
 }
 """;
         var comp = CreateCompilation(src);
@@ -3234,7 +3953,6 @@ static class Extensions
         CompileAndVerify(comp, symbolValidator: (m) =>
         {
             AssertEx.Equal(ScopedKind.ScopedRef, m.GlobalNamespace.GetMember<MethodSymbol>("Extensions.<>E__0.<Extension>$").Parameters[0].EffectiveScope);
-            AssertEx.Equal(ScopedKind.ScopedRef, m.GlobalNamespace.GetMember<MethodSymbol>("Extensions.<>E__1.<Extension>$").Parameters[0].EffectiveScope);
         }).VerifyDiagnostics();
     }
 
@@ -3400,6 +4118,31 @@ public static class Extensions
             //         internal int this[byte i] { get => 0; set {}}
             Diagnostic(ErrorCode.ERR_BadVisIndexerParam, "this").WithArguments("Extensions.extension(Extensions.C).this[byte]", "Extensions.C").WithLocation(15, 22)
             );
+    }
+
+    [Fact]
+    public void ReceiverParameter_InconsistentTypeAccessibility_04()
+    {
+        var src = """
+public static class Extensions
+{
+    extension(C x)
+    {
+        public static void M() { }
+        public static int P { get => 0; set { } }
+    }
+
+    private class C { }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (5,28): error CS0051: Inconsistent accessibility: parameter type 'Extensions.C' is less accessible than method 'Extensions.extension(Extensions.C).M()'
+            //         public static void M() { }
+            Diagnostic(ErrorCode.ERR_BadVisParamType, "M").WithArguments("Extensions.extension(Extensions.C).M()", "Extensions.C").WithLocation(5, 28),
+            // (6,27): error CS0055: Inconsistent accessibility: parameter type 'Extensions.C' is less accessible than indexer 'Extensions.extension(Extensions.C).P'
+            //         public static int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_BadVisIndexerParam, "P").WithArguments("Extensions.extension(Extensions.C).P", "Extensions.C").WithLocation(6, 27));
     }
 
     [Fact]
@@ -3604,16 +4347,20 @@ unsafe static class E
     extension(int* i)
     {
         public static void M() { }
+        public static int P => 0;
     }
     public static void M2(this int* i) { }
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : missing validation
+        // Note: we disallow even if the extension block only has static members
         var comp = CreateCompilation(source, options: TestOptions.UnsafeDebugDll);
         comp.VerifyEmitDiagnostics(
-            // (7,32): error CS1103: The first parameter of an extension method cannot be of type 'int*'
+            // (3,15): error CS1103: The receiver parameter of an extension cannot be of type 'int*'
+            //     extension(int* i)
+            Diagnostic(ErrorCode.ERR_BadTypeforThis, "int*").WithArguments("int*").WithLocation(3, 15),
+            // (8,32): error CS1103: The receiver parameter of an extension cannot be of type 'int*'
             //     public static void M2(this int* i) { }
-            Diagnostic(ErrorCode.ERR_BadTypeforThis, "int*").WithArguments("int*").WithLocation(7, 32));
+            Diagnostic(ErrorCode.ERR_BadTypeforThis, "int*").WithArguments("int*").WithLocation(8, 32));
     }
 
     [Fact]
@@ -3622,7 +4369,7 @@ unsafe static class E
         var src = """
 public static class Extensions
 {
-    extension(object)
+    extension(object o)
     {
         void M() { System.Console.Write("ran"); }
     }
@@ -3955,7 +4702,7 @@ public static class Extensions
         } // end of method '<>E__0'::M
     } // end of class <>E__0
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M (
             object o,
             string s
@@ -4014,7 +4761,7 @@ public static class Extensions
             AssertEx.Equal("System.String Extensions.M(this System.Object o, System.String s)", implementation.ToTestDisplayString());
             Assert.Equal(m is not PEModuleSymbol, implementation.IsImplicitlyDeclared);
             Assert.True(implementation.IsExtensionMethod);
-            Assert.True(implementation.HasSpecialName);
+            Assert.False(implementation.HasSpecialName);
             Assert.False(implementation.HasRuntimeSpecialName);
 
             Assert.True(implementation.ContainingType.MightContainExtensionMethods);
@@ -4074,7 +4821,7 @@ public static class Extensions
         } // end of method '<>E__0'::M
     } // end of class <>E__0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string M (
             object o,
             string s
@@ -4453,7 +5200,7 @@ public static class Extensions
         .field public string s
     } // end of class <>c__DisplayClass1_0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string M (
             object o,
             string s
@@ -4663,7 +5410,7 @@ public static class Extensions
         } // end of method '<>c__DisplayClass1_0'::'<M>b__0'
     } // end of class <>c__DisplayClass1_0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string M (
             object o,
             string s
@@ -5032,7 +5779,7 @@ public static class Extensions
         }
     } // end of class <M>d__1
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class [mscorlib]System.Collections.Generic.IEnumerable`1<string> M (
             object o,
             string s
@@ -5336,7 +6083,7 @@ public static class Extensions
         } // end of method '<M>d__1'::SetStateMachine
     } // end of class <M>d__1
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class [mscorlib]System.Threading.Tasks.Task`1<string> M (
             object o,
             string s
@@ -5469,7 +6216,7 @@ public class C<T>(string v)
         AssertEx.Equal("System.String Extensions.M<T, U>(this C<T> o, T t, U u)", implementation.ToTestDisplayString());
         Assert.True(implementation.IsImplicitlyDeclared);
         Assert.True(implementation.IsExtensionMethod);
-        Assert.True(implementation.HasSpecialName);
+        Assert.False(implementation.HasSpecialName);
         Assert.False(implementation.HasRuntimeSpecialName);
 
         var verifier1 = CompileAndVerify(comp1).VerifyDiagnostics();
@@ -5513,7 +6260,7 @@ public class C<T>(string v)
         } // end of method '<>E__0`1'::M
     } // end of class <>E__0`1
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string M<T, U> (
             class C`1<!!T> o,
             !!T t,
@@ -5765,7 +6512,7 @@ public class C<T>(string val)
         .field public !T t1
     } // end of class <>c__DisplayClass1_0`2
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class C`1<!!U> M<T, U> (
             class C`1<!!T> o,
             !!T t1,
@@ -6098,7 +6845,7 @@ public class C<T>(string val)
         } // end of method '<>c__DisplayClass1_0`2'::'<M>b__0'
     } // end of class <>c__DisplayClass1_0`2
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class C`1<!!U> M<T, U> (
             class C`1<!!T> o,
             !!T t1,
@@ -6516,7 +7263,7 @@ public class C<T>(string val)
         }
     } // end of class <M>d__1`2
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class [mscorlib]System.Collections.Generic.IEnumerable`1<string> M<T, U> (
             class C`1<!!T> o,
             !!T t1,
@@ -6803,7 +7550,7 @@ public class C<T>(string val)
         } // end of method '<M>d__1`2'::SetStateMachine
     } // end of class <M>d__1`2
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class [mscorlib]System.Threading.Tasks.Task`1<string> M<T, U> (
             class C`1<!!T> o,
             !!T t1,
@@ -6944,7 +7691,7 @@ public static class Extensions
             AssertEx.Equal("System.String Extensions.M(System.Object o, System.String s)", implementation.ToTestDisplayString());
             Assert.Equal(m is not PEModuleSymbol, implementation.IsImplicitlyDeclared);
             Assert.False(implementation.IsExtensionMethod);
-            Assert.True(implementation.HasSpecialName);
+            Assert.False(implementation.HasSpecialName);
             Assert.False(implementation.HasRuntimeSpecialName);
 
             Assert.True(implementation.ContainingType.MightContainExtensionMethods);
@@ -6994,7 +7741,7 @@ public static class Extensions
         } // end of method '<>E__0'::M
     } // end of class <>E__0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string M (
             object o,
             string s
@@ -7485,7 +8232,7 @@ public static class Extensions
         .field public string s
     } // end of class <>c__DisplayClass1_0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string M (
             object o,
             string s
@@ -7693,7 +8440,7 @@ public static class Extensions
         } // end of method '<>c__DisplayClass1_0'::'<M>b__0'
     } // end of class <>c__DisplayClass1_0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string M (
             object o,
             string s
@@ -8060,7 +8807,7 @@ public static class Extensions
         }
     } // end of class <M>d__1
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class [mscorlib]System.Collections.Generic.IEnumerable`1<string> M (
             object o,
             string s
@@ -8328,7 +9075,7 @@ public static class Extensions
         } // end of method '<M>d__1'::SetStateMachine
     } // end of class <M>d__1
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         class [mscorlib]System.Threading.Tasks.Task`1<string> M (
             object o,
             string s
@@ -8450,7 +9197,7 @@ public static class Extensions
         AssertEx.Equal("System.String Extensions.get_P(System.Object o)", implementation.ToTestDisplayString());
         Assert.True(implementation.IsImplicitlyDeclared);
         Assert.False(implementation.IsExtensionMethod);
-        Assert.True(implementation.HasSpecialName);
+        Assert.False(implementation.HasSpecialName);
         Assert.False(implementation.HasRuntimeSpecialName);
 
         var verifier1 = CompileAndVerify(comp1).VerifyDiagnostics();
@@ -8496,7 +9243,7 @@ public static class Extensions
         }
     } // end of class <>E__0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string get_P (
             object o
         ) cil managed 
@@ -8739,7 +9486,7 @@ public static class Extensions
         AssertEx.Equal("System.String Extensions.get_P()", implementation.ToTestDisplayString());
         Assert.True(implementation.IsImplicitlyDeclared);
         Assert.False(implementation.IsExtensionMethod);
-        Assert.True(implementation.HasSpecialName);
+        Assert.False(implementation.HasSpecialName);
         Assert.False(implementation.HasRuntimeSpecialName);
 
         var verifier1 = CompileAndVerify(comp1).VerifyDiagnostics();
@@ -8785,7 +9532,7 @@ public static class Extensions
         }
     } // end of class <>E__0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string get_P () cil managed 
     {
         // Method begins at RVA 0x2067
@@ -8996,7 +9743,7 @@ public static class Extensions
         }
     } // end of class <>E__0
     // Methods
-    .method public hidebysig specialname static 
+    .method public hidebysig static 
         string get_P (
             object o
         ) cil managed 
@@ -9146,7 +9893,7 @@ class C1
         .field public static class [mscorlib]System.Func`1<!V> '<0>__M1'
     } // end of class <local>O__1_0`3
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M2<T, U> (
             !!T o
         ) cil managed 
@@ -9290,7 +10037,7 @@ class C1
         .field public static class [mscorlib]System.Action '<0>__M1'
     } // end of class <>O__1_0`1
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M2<T> (
             !!T o
         ) cil managed 
@@ -9435,7 +10182,7 @@ class C1
         .field public static class [mscorlib]System.Action '<0>__M1'
     } // end of class <>O
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M2 (
             object o
         ) cil managed 
@@ -9575,7 +10322,7 @@ public static class Extensions
         .field public static class [mscorlib]System.Action '<0>__local'
     } // end of class <>O__1_0`1
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         class [mscorlib]System.Action M2<T> (
             !!T o
         ) cil managed 
@@ -9717,7 +10464,7 @@ public static class Extensions
         .field public static class [mscorlib]System.Action '<0>__local'
     } // end of class <>O
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         class [mscorlib]System.Action M2 (
             object o
         ) cil managed 
@@ -9858,7 +10605,7 @@ public static class Extensions
         .field public static class [System.Core]System.Runtime.CompilerServices.CallSite`1<class [mscorlib]System.Action`5<class [System.Core]System.Runtime.CompilerServices.CallSite, object, !T, !U, !V>> '<>p__0'
     } // end of class <>o__0|1`3
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M2<T, U> (
             !!T o
         ) cil managed 
@@ -10037,7 +10784,7 @@ public static class Extensions
         .field public static class [System.Core]System.Runtime.CompilerServices.CallSite`1<class [mscorlib]System.Action`3<class [System.Core]System.Runtime.CompilerServices.CallSite, object, !T>> '<>p__0'
     } // end of class <>o__1`1
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M2<T> (
             !!T o
         ) cil managed 
@@ -10200,7 +10947,7 @@ public static class Extensions
         .field public static class [System.Core]System.Runtime.CompilerServices.CallSite`1<class [mscorlib]System.Action`2<class [System.Core]System.Runtime.CompilerServices.CallSite, object>> '<>p__0'
     } // end of class <>o__1
     // Methods
-    .method private hidebysig specialname static 
+    .method private hidebysig static 
         void M2 (
             object o
         ) cil managed 
@@ -11527,16 +12274,15 @@ static class E
 """;
         var comp = CreateCompilation(source);
         comp.VerifyEmitDiagnostics(
-            // (4,1): warning CS8602: Dereference of a possibly null reference.
+            // (4,1): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.extension<T>(T)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
             // o.Method();
-            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o").WithLocation(4, 1));
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "o.Method").WithArguments("E.extension<T>(T)", "T", "object?").WithLocation(4, 1));
         CompileAndVerify(comp, expectedOutput: "True");
 
         var tree = comp.SyntaxTrees.Single();
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "o.Method");
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Nullability is undone
-        Assert.Equal("void E.extension<System.Object>(System.Object!).Method()", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString(includeNonNullable: true));
+        Assert.Equal("void E.extension<System.Object?>(System.Object?).Method()", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString(includeNonNullable: true));
     }
 
     [Fact]
@@ -11794,7 +12540,7 @@ System.Console.Write($"{nameof(o.M)} ");
 
 static class E
 {
-    extension(object)
+    extension(object o)
     {
         public void M() { }
     }
@@ -11820,7 +12566,7 @@ System.Console.Write($"{nameof(E.M)} ");
 
 static class E
 {
-    extension(object)
+    extension(object o)
     {
         public void M() { }
     }
@@ -11832,7 +12578,7 @@ static class E
         var tree = comp.SyntaxTrees.Single();
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "E.M");
-        Assert.Equal(["void E.M(this System.Object)", "void E.<>E__0.M()"], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
+        Assert.Equal(["void E.M(this System.Object o)", "void E.<>E__0.M()"], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
     }
 
     [Fact]
@@ -11913,11 +12659,10 @@ static class E
 }
 """;
         var comp = CreateCompilation(src);
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : nullability is undone
         comp.VerifyEmitDiagnostics(
-            // (4,1): warning CS8602: Dereference of a possibly null reference.
+            // (4,1): warning CS8604: Possible null reference argument for parameter 'o' in 'extension(object)'.
             // o.Method();
-            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o").WithLocation(4, 1));
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "o").WithArguments("o", "extension(object)").WithLocation(4, 1));
 
         CompileAndVerify(comp, expectedOutput: "Method");
     }
@@ -12062,10 +12807,12 @@ static class E
     [Fact]
     public void InstanceMethodInvocation_Simple_ExpressionTree()
     {
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : decide whether to allow expression tree scenarios. Verify shape of the tree if we decide to allow
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Verify shape of the tree if we decide to allow
         var source = """
 using System.Linq.Expressions;
 Expression<System.Action> x = () => new C().M(42);
+System.Action a = x.Compile();
+a();
 
 class C
 {
@@ -12076,14 +12823,13 @@ static class E
 {
     extension(C c)
     {
-        public void M(int i) { System.Console.Write("E.M"); }
+        public void M(int i) { System.Console.Write("ran"); }
     }
 }
 """;
         var comp = CreateCompilation(source);
         comp.VerifyEmitDiagnostics();
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : metadata is undone
-        //CompileAndVerify(comp, expectedOutput: "").VerifyDiagnostics();
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
 
         var tree = comp.SyntaxTrees.First();
         var model = comp.GetSemanticModel(tree);
@@ -12706,7 +13452,7 @@ static class E
             // (1,14): error CS1061: 'C<int>' does not contain a definition for 'StaticType' and no accessible extension method 'StaticType' accepting a first argument of type 'C<int>' could be found (are you missing a using directive or an assembly reference?)
             // new C<int>().StaticType<string>();
             Diagnostic(ErrorCode.ERR_NoSuchMemberOrExtension, "StaticType<string>").WithArguments("C<int>", "StaticType").WithLocation(1, 14),
-            // (9,29): error CS9282: Extension declarations can include only methods or properties
+            // (9,29): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         public static class StaticType<U> { }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "StaticType").WithLocation(9, 29));
 
@@ -13656,9 +14402,11 @@ static class E
 }
 """;
         var comp = CreateCompilation(src);
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : validate extension parameter
         comp.VerifyEmitDiagnostics(
-            // (12,32): error CS1103: The first parameter of an extension method cannot be of type 'dynamic'
+            // (7,15): error CS1103: The receiver parameter of an extension cannot be of type 'dynamic'
+            //     extension(dynamic d)
+            Diagnostic(ErrorCode.ERR_BadTypeforThis, "dynamic").WithArguments("dynamic").WithLocation(7, 15),
+            // (12,32): error CS1103: The receiver parameter of an extension cannot be of type 'dynamic'
             //     public static void M2(this dynamic d) { }
             Diagnostic(ErrorCode.ERR_BadTypeforThis, "dynamic").WithArguments("dynamic").WithLocation(12, 32));
     }
@@ -14880,24 +15628,25 @@ using System.Collections;
 using System.Collections.Generic;
 
 MyCollection c = [42];
-System.Console.Write(c is null);
+System.Console.Write(c.field);
 
 static class E
 {
     extension(ref MyCollection c)
     {
-        public void Add(int i) { System.Console.Write("ran "); c = null; }
+        public void Add(int i) { System.Console.Write("ran "); c = new MyCollection() { field = i }; }
     }
 }
 
-public class MyCollection : IEnumerable<int>
+public struct MyCollection : IEnumerable<int>
 {
+    public int field;
     IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw null;
     IEnumerator IEnumerable.GetEnumerator() => throw null;
 }
 """;
         var comp = CreateCompilation(source);
-        CompileAndVerify(comp, expectedOutput: "ran True").VerifyDiagnostics();
+        CompileAndVerify(comp, expectedOutput: "ran 42").VerifyDiagnostics();
     }
 
     [Fact]
@@ -14917,7 +15666,7 @@ static class E
     }
 }
 
-public class MyCollection : IEnumerable<int>
+public struct MyCollection : IEnumerable<int>
 {
     IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw null;
     IEnumerator IEnumerable.GetEnumerator() => throw null;
@@ -16060,9 +16809,11 @@ static class E
     public static ref string M(this ref string s) => ref s;
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : missing error on extension parameter
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
+            // (10,19): error CS9300: The 'ref' receiver parameter of an extension block must be a value type or a generic type constrained to struct.
+            //     extension(ref string s)
+            Diagnostic(ErrorCode.ERR_RefExtensionParameterMustBeValueTypeOrConstrainedToOne, "string").WithLocation(10, 19),
             // (15,30): error CS8337: The first parameter of a 'ref' extension method 'M' must be a value type or a generic type constrained to struct.
             //     public static ref string M(this ref string s) => ref s;
             Diagnostic(ErrorCode.ERR_RefExtensionMustBeValueTypeOrConstrainedToOne, "M").WithArguments("M").WithLocation(15, 30));
@@ -16662,7 +17413,7 @@ class C { }
 
 static class E
 {
-    extension(C)
+    extension(C c)
     {
         public void M(int i) { System.Console.Write($"E.M({i})"); }
     }
@@ -17296,7 +18047,6 @@ static partial class E
 }
 """;
         var comp = CreateCompilation(source);
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : the error on the partial method seems misleading
         comp.VerifyEmitDiagnostics(
             // (1,26): error CS0117: 'object' does not contain a definition for 'M'
             // System.Action a = object.M;
@@ -17835,15 +18585,17 @@ static class E
     }
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 :(instance) confirm whether init-only accessors should be allowed in extensions
         var comp = CreateCompilation(src, targetFramework: TargetFramework.Net70);
         comp.VerifyEmitDiagnostics(
             // (1,1): error CS8852: Init-only property or indexer 'E.extension(object).Property' can only be assigned in an object initializer, or on 'this' or 'base' in an instance constructor or an 'init' accessor.
             // new object().Property = 1;
-            Diagnostic(ErrorCode.ERR_AssignmentInitOnly, "new object().Property").WithArguments("E.extension(object).Property").WithLocation(1, 1));
+            Diagnostic(ErrorCode.ERR_AssignmentInitOnly, "new object().Property").WithArguments("E.extension(object).Property").WithLocation(1, 1),
+            // (7,31): error CS9304: 'E.extension(object).Property': cannot declare init-only accessors in an extension block
+            //         public int Property { init => throw null; }
+            Diagnostic(ErrorCode.ERR_InitInExtension, "init").WithArguments("E.extension(object).Property").WithLocation(7, 31));
     }
 
-    [ConditionalFact(typeof(NoUsedAssembliesValidation))] // Tracked by https://github.com/dotnet/roslyn/issues/76130 : metadata is undone
+    [Fact]
     public void InstancePropertyAccess_InitOnlyProperty_ObjectInitializer()
     {
         var src = """
@@ -17857,9 +18609,11 @@ static class E
     }
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : confirm whether init-only accessors should be allowed in extensions
         var comp = CreateCompilation(src, targetFramework: TargetFramework.Net70);
-        comp.VerifyDiagnostics();
+        comp.VerifyEmitDiagnostics(
+            // (7,31): error CS9304: 'E.extension(object).Property': cannot declare init-only accessors in an extension block
+            //         public int Property { init => throw null; }
+            Diagnostic(ErrorCode.ERR_InitInExtension, "init").WithArguments("E.extension(object).Property").WithLocation(7, 31));
 
         var tree = comp.SyntaxTrees.First();
         var model = comp.GetSemanticModel(tree);
@@ -20683,7 +21437,7 @@ unsafe class C
 
 static class E
 {
-    extension(C)
+    extension(C c)
     {
         public void M(string s, object o) { System.Console.Write(s); }
     }
@@ -20877,7 +21631,7 @@ class C { }
 
 static class E
 {
-    extension(C)
+    extension(C c)
     {
         public string Method() => throw null;
     }
@@ -20960,7 +21714,7 @@ class C { }
 
 static class E
 {
-    extension(C)
+    extension(C c)
     {
         public string Property => "Property";
     }
@@ -21417,7 +22171,7 @@ static class E
         var source = """
 static class E
 {
-    extension(ref readonly int)
+    extension(ref readonly int i)
     {
     }
 }
@@ -23061,7 +23815,7 @@ static class Extensions
         var comp = CreateCompilation(src);
 
         comp.VerifyEmitDiagnostics(
-            // (6,15): error CS9282: Extension declarations can include only methods or properties
+            // (6,15): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         class Nested
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Nested").WithLocation(6, 15),
             // (11,24): error CS9293: Cannot use extension parameter 'int p' in this context.
@@ -24662,12 +25416,12 @@ class C<T, S> {}
         var src = """
 public static class Extensions1
 {
-    extension<T, S>(C<T, S>)
+    extension<T, S>(C<T, S> c)
     {
         void M1() {}
     }
 
-    extension<T, S>(C<S, T>)
+    extension<T, S>(C<S, T> c)
     {
         void M1() {}
     }
@@ -24733,7 +25487,7 @@ public static class Extensions
     public void MemberNameAndSignatureConflict_29_Indexers(bool insertAtTheBeginning)
     {
         var insert = """
-    extension<S>(S[])
+    extension<S>(S[] s)
     {
         static void M1(int z) {}
     }
@@ -24744,7 +25498,7 @@ public static class Extensions
 {
 " + (insertAtTheBeginning ? insert : "") + @"
 
-    extension<T>(T[])
+    extension<T>(T[] t)
     {
 #line 8
         int this[T x] => default;
@@ -24783,7 +25537,7 @@ public static class Extensions
 {
 " + (insertAtTheBeginning ? insert : "") + @"
 
-    extension<T>(T[])
+    extension<T>(T[] t)
     {
         int this[T x] => default;
     }
@@ -24822,7 +25576,7 @@ public static class Extensions
 {
 " + (insertAtTheBeginning ? insert : "") + @"
 
-    extension<T>(T[])
+    extension<T>(T[] t)
     {
         int this[T x] => default;
     }
@@ -24863,7 +25617,7 @@ public static class Extensions
 {
 " + (insertAtTheBeginning ? insert : "") + @"
 
-    extension<T>(T[])
+    extension<T>(T[] t)
     {
         T P => default;
     }
@@ -24902,7 +25656,7 @@ public static class Extensions
 {
 " + (insertAtTheBeginning ? insert : "") + @"
 
-    extension<T>(T[])
+    extension<T>(T[] t)
     {
 #line 8
         T P => default;
@@ -24941,7 +25695,7 @@ public static class Extensions
 {
 " + (insertAtTheBeginning ? insert : "") + @"
 
-    extension<T>(T[])
+    extension<T>(T[] t)
     {
 #line 8
         T P => default;
@@ -25152,30 +25906,46 @@ static class E1
     [Fact]
     public void MethodInvocation_RemoveLowerPriorityMembers_02()
     {
-        var source = """
-42.M(43);
-
-static class E1
+        var libSrc = """
+public static class E1
 {
     extension(int i)
     {
-        public void M(int j) { System.Console.Write("ran"); }
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(0)]
+        public void M(int j) => throw null;
     }
     extension(int i)
     {
         [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
-        public void M(long l) => throw null;
+        public void M(long l) { System.Console.Write("ran"); }
     }
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : ORPA should look at the containing static class (rather than look at the extension declaration) as the "containing type"
-        var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
-        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+        var source = """
+42.M(43);
+""";
+        var comp = CreateCompilation([source, libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran", symbolValidator: verify).VerifyDiagnostics();
 
         var tree = comp.SyntaxTrees.First();
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M");
-        Assert.Equal("void E1.<>E__0.M(System.Int32 j)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+        Assert.Equal("void E1.<>E__1.M(System.Int64 l)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+
+        var libComp = CreateCompilation([libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        var comp2 = CreateCompilation(source, references: [libComp.EmitToImageReference()]);
+        CompileAndVerify(comp2, expectedOutput: "ran").VerifyDiagnostics();
+
+        static void verify(ModuleSymbol m)
+        {
+            var implementations = m.ContainingAssembly.GetTypeByMetadataName("E1").GetMembers().OfType<MethodSymbol>().ToArray();
+
+            AssertEx.Equal("void E1.M(this System.Int32 i, System.Int32 j)", implementations[0].ToTestDisplayString());
+            AssertEx.Equal("System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(0)", implementations[0].GetAttributes().Single().ToString());
+
+            AssertEx.Equal("void E1.M(this System.Int32 i, System.Int64 l)", implementations[1].ToTestDisplayString());
+            AssertEx.Equal("System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(1)", implementations[1].GetAttributes().Single().ToString());
+        }
     }
 
     [Fact]
@@ -25188,20 +25958,19 @@ static class E1
 {
     extension(int i)
     {
-        public void M(int j) { System.Console.Write("ran"); }
+        public void M(int j) => throw null;
     }
     [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
-    public static void M(this int i, long l) => throw null;
+    public static void M(this int i, long l) { System.Console.Write("ran"); }
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : ORPA should look at the containing static class (rather than look at the extension declaration) as the "containing type"
         var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
         CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
 
         var tree = comp.SyntaxTrees.First();
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M");
-        Assert.Equal("void E1.<>E__0.M(System.Int32 j)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+        Assert.Equal("void System.Int32.M(System.Int64 l)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
     }
 
     [Fact]
@@ -25212,7 +25981,38 @@ static class E1
 
 static class E1
 {
-    public static void M(this int i, int j) { System.Console.Write("ran"); }
+    public static void M(this int i, int j) => throw null;
+    extension(int i)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public void M(long l) { System.Console.Write("ran"); }
+    }
+}
+""";
+        var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M");
+        Assert.Equal("void E1.<>E__0.M(System.Int64 l)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+    }
+
+    [Fact]
+    public void MethodInvocation_RemoveLowerPriorityMembers_05()
+    {
+        var source = """
+42.M(43);
+
+static class E1
+{
+    extension(int i)
+    {
+        public void M(int j) { System.Console.Write("ran"); }
+    }
+}
+static class E2
+{
     extension(int i)
     {
         [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
@@ -25220,7 +26020,34 @@ static class E1
     }
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : ORPA should look at the containing static class (rather than look at the extension declaration) as the "containing type"
+        var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M");
+        Assert.Equal("void E1.<>E__0.M(System.Int32 j)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+    }
+
+    [Fact]
+    public void MethodInvocation_RemoveLowerPriorityMembers_06()
+    {
+        var source = """
+42.M(43);
+
+static class E1
+{
+    public static void M(this int i, int j) { System.Console.Write("ran"); }
+}
+static class E2
+{
+    extension(int i)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public void M(long l) => throw null;
+    }
+}
+""";
         var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
         CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
 
@@ -25228,6 +26055,427 @@ static class E1
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M");
         Assert.Equal("void System.Int32.M(System.Int32 j)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+    }
+
+    [Fact]
+    public void MethodInvocation_RemoveLowerPriorityMembers_07()
+    {
+        var source = """
+string s = "";
+s.M();
+
+static class E1
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public void M() { System.Console.Write("ran"); }
+    }
+    extension(string s)
+    {
+        public void M() => throw null;
+    }
+}
+""";
+        var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "s.M");
+        Assert.Equal("void E1.<>E__0.M()", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+    }
+
+    [Fact]
+    public void MethodInvocation_RemoveLowerPriorityMembers_08()
+    {
+        var source = """
+string s = "ran";
+System.Console.Write(s.ToString());
+
+static class E
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public string ToString() => throw null;
+    }
+}
+""";
+        var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+    }
+
+    [Fact]
+    public void MethodInvocation_RemoveLowerPriorityMembers_09()
+    {
+        var libSrc = """
+public static class E
+{
+    extension(int i)
+    {
+        public void M() => throw null;
+    }
+    extension(long l)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public void M() { System.Console.Write("ran"); }
+    }
+}
+""";
+        var source = """
+E.M(43);
+""";
+
+        var comp = CreateCompilation([source, libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+
+        var libComp = CreateCompilation([libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        var comp2 = CreateCompilation([source], references: [libComp.EmitToImageReference()]);
+        CompileAndVerify(comp2, expectedOutput: "ran").VerifyDiagnostics();
+    }
+
+    [Fact]
+    public void MethodInvocation_RemoveLowerPriorityMembers_10()
+    {
+        var libSrc = """
+public static class E
+{
+    extension(int)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(0)]
+        public static void M(int j) => throw null;
+    }
+    extension(int)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public static void M(long l) { System.Console.Write("ran"); }
+    }
+}
+""";
+        var source = """
+int.M(43);
+""";
+        var comp = CreateCompilation([source, libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran", symbolValidator: verify).VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "int.M");
+        Assert.Equal("void E.<>E__1.M(System.Int64 l)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+
+        var libComp = CreateCompilation([libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        var comp2 = CreateCompilation(source, references: [libComp.EmitToImageReference()]);
+        CompileAndVerify(comp2, expectedOutput: "ran").VerifyDiagnostics();
+
+        static void verify(ModuleSymbol m)
+        {
+            var implementations = m.ContainingAssembly.GetTypeByMetadataName("E").GetMembers().OfType<MethodSymbol>().ToArray();
+
+            AssertEx.Equal("void E.M(System.Int32 j)", implementations[0].ToTestDisplayString());
+            AssertEx.Equal("System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(0)", implementations[0].GetAttributes().Single().ToString());
+
+            AssertEx.Equal("void E.M(System.Int64 l)", implementations[1].ToTestDisplayString());
+            AssertEx.Equal("System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(1)", implementations[1].GetAttributes().Single().ToString());
+        }
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_01()
+    {
+        var source = """
+string s = "";
+_ = s.P;
+
+static class E
+{
+    extension(object o)
+    {
+        public long P => throw null;
+    }
+    extension(string s)
+    {
+        public int P { get { System.Console.Write("ran"); return 0; } }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "s.P");
+        Assert.Equal("System.Int32 E.<>E__1.P { get; }", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_02()
+    {
+        var libSrc = """
+public static class E
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public int P { get { System.Console.Write("ran"); return 0; } }
+    }
+    extension(string s)
+    {
+        public long P => throw null;
+    }
+}
+""";
+
+        var source = """
+string s = "";
+_ = s.P;
+""";
+        var comp = CreateCompilation([source, libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "s.P");
+        Assert.Equal("System.Int32 E.<>E__0.P { get; }", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+
+        var libComp = CreateCompilation([libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        var comp2 = CreateCompilation([source], references: [libComp.EmitToImageReference()]);
+        CompileAndVerify(comp2, expectedOutput: "ran").VerifyDiagnostics();
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_03()
+    {
+        var source = """
+string s = "";
+_ = s.P;
+
+static class E1
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public long P => throw null;
+    }
+}
+static class E2
+{
+    extension(string s)
+    {
+        public int P { get { System.Console.Write("ran"); return 0; } }
+    }
+}
+""";
+        var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "s.P");
+        Assert.Equal("System.Int32 E2.<>E__0.P { get; }", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_04()
+    {
+        var source = """
+static class E
+{
+    extension(object o)
+    {
+        public int P
+        {
+            [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+            get => throw null;
+            [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+            set => throw null;
+        }
+    }
+}
+""";
+        var comp = CreateCompilation([source, OverloadResolutionPriorityAttributeDefinition]);
+        comp.VerifyEmitDiagnostics(
+            // (7,14): error CS9262: Cannot use 'OverloadResolutionPriorityAttribute' on this member.
+            //             [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+            Diagnostic(ErrorCode.ERR_CannotApplyOverloadResolutionPriorityToMember, "System.Runtime.CompilerServices.OverloadResolutionPriority(1)").WithLocation(7, 14),
+            // (9,14): error CS9262: Cannot use 'OverloadResolutionPriorityAttribute' on this member.
+            //             [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+            Diagnostic(ErrorCode.ERR_CannotApplyOverloadResolutionPriorityToMember, "System.Runtime.CompilerServices.OverloadResolutionPriority(1)").WithLocation(9, 14));
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_05()
+    {
+        var libSrc = """
+public static class E
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public int P { get { System.Console.Write("ran"); return 0; } }
+    }
+    extension(string s)
+    {
+        public long P => throw null;
+    }
+}
+""";
+
+        var source = """
+E.get_P("");
+""";
+        var comp = CreateCompilation([source, libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran", symbolValidator: verify).VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "E.get_P");
+        Assert.Equal("System.Int32 E.get_P(System.Object o)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+
+        var libComp = CreateCompilation([libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        var comp2 = CreateCompilation([source], references: [libComp.EmitToImageReference()]);
+        CompileAndVerify(comp2, expectedOutput: "ran").VerifyDiagnostics();
+
+        static void verify(ModuleSymbol m)
+        {
+            var implementations = m.ContainingAssembly.GetTypeByMetadataName("E").GetMembers().OfType<MethodSymbol>().ToArray();
+
+            Assert.Equal("System.Int32 E.get_P(System.Object o)", implementations[0].ToTestDisplayString());
+            Assert.Equal("System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(1)", implementations[0].GetAttributes().Single().ToString());
+
+            Assert.Equal("System.Int64 E.get_P(System.String s)", implementations[1].ToTestDisplayString());
+            Assert.Empty(implementations[1].GetAttributes());
+        }
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_06()
+    {
+        var libSrc = """
+public static class E
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public int P { set { System.Console.Write("ran"); } }
+    }
+    extension(string s)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(0)]
+        public int P { set => throw null; }
+    }
+}
+""";
+
+        var source = """
+E.set_P("", 0);
+""";
+        var comp = CreateCompilation([source, libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        CompileAndVerify(comp, expectedOutput: "ran", symbolValidator: verify).VerifyDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "E.set_P");
+        Assert.Equal("void E.set_P(System.Object o, System.Int32 value)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+
+        var libComp = CreateCompilation([libSrc, OverloadResolutionPriorityAttributeDefinition]);
+        var comp2 = CreateCompilation([source], references: [libComp.EmitToImageReference()]);
+        CompileAndVerify(comp2, expectedOutput: "ran").VerifyDiagnostics();
+
+        static void verify(ModuleSymbol m)
+        {
+            var implementations = m.ContainingAssembly.GetTypeByMetadataName("E").GetMembers().OfType<MethodSymbol>().ToArray();
+
+            Assert.Equal("void E.set_P(System.Object o, System.Int32 value)", implementations[0].ToTestDisplayString());
+            Assert.Equal("System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(1)", implementations[0].GetAttributes().Single().ToString());
+
+            Assert.Equal("void E.set_P(System.String s, System.Int32 value)", implementations[1].ToTestDisplayString());
+            Assert.Equal("System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(0)", implementations[1].GetAttributes().Single().ToString());
+        }
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_07()
+    {
+        var source = """
+public static class E
+{
+    extension(object o)
+    {
+        public static int P => 0;
+    }
+    extension(string s)
+    {
+        public static int P => 0;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (9,32): error CS0111: Type 'E' already defines a member called 'get_P' with the same parameter types
+            //         public static int P => 0;
+            Diagnostic(ErrorCode.ERR_MemberAlreadyExists, "0").WithArguments("get_P", "E").WithLocation(9, 32));
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_08()
+    {
+        var source = """
+static class E
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        public int P => throw null;
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,42): error CS0234: The type or namespace name 'OverloadResolutionPriorityAttribute' does not exist in the namespace 'System.Runtime.CompilerServices' (are you missing an assembly reference?)
+            //         [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+            Diagnostic(ErrorCode.ERR_DottedTypeNameNotFoundInNS, "OverloadResolutionPriority").WithArguments("OverloadResolutionPriorityAttribute", "System.Runtime.CompilerServices").WithLocation(5, 42),
+            // (5,42): error CS0234: The type or namespace name 'OverloadResolutionPriority' does not exist in the namespace 'System.Runtime.CompilerServices' (are you missing an assembly reference?)
+            //         [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+            Diagnostic(ErrorCode.ERR_DottedTypeNameNotFoundInNS, "OverloadResolutionPriority").WithArguments("OverloadResolutionPriority", "System.Runtime.CompilerServices").WithLocation(5, 42));
+    }
+
+    [Fact]
+    public void PropertyAccess_RemoveLowerPriorityMembers_09()
+    {
+        var source = """
+public static class E
+{
+    extension(object o)
+    {
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+        [System.Runtime.CompilerServices.OverloadResolutionPriority(2)]
+        public int P { set { } }
+    }
+}
+
+namespace System.Runtime.CompilerServices
+{
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor | AttributeTargets.Property, AllowMultiple = true, Inherited = false)]
+    public sealed class OverloadResolutionPriorityAttribute(int priority) : Attribute
+    {
+        public int Priority => priority;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        CompileAndVerify(comp, symbolValidator: verify).VerifyDiagnostics();
+
+        static void verify(ModuleSymbol m)
+        {
+            var implementation = m.ContainingAssembly.GetTypeByMetadataName("E").GetMembers().OfType<MethodSymbol>().Single();
+            AssertEx.SetEqual([
+                "System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(1)",
+                "System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute(2)"],
+                implementation.GetAttributes().ToStrings());
+        }
     }
 
     [Fact]
@@ -26558,12 +27806,14 @@ static class E
     public static void M2(this ref C c) { }
 }
 ";
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : missing ERR_RefExtensionMustBeValueTypeOrConstrainedToOne on the extension parameter
         var comp = CreateCompilation(source);
         comp.VerifyEmitDiagnostics(
             // (7,3): error CS1061: 'C' does not contain a definition for 'M2' and no accessible extension method 'M2' accepting a first argument of type 'C' could be found (are you missing a using directive or an assembly reference?)
             // c.M2();
             Diagnostic(ErrorCode.ERR_NoSuchMemberOrExtension, "M2").WithArguments("C", "M2").WithLocation(7, 3),
+            // (14,19): error CS9300: The 'ref' receiver parameter of an extension block must be a value type or a generic type constrained to struct.
+            //     extension(ref C c)
+            Diagnostic(ErrorCode.ERR_RefExtensionParameterMustBeValueTypeOrConstrainedToOne, "C").WithLocation(14, 19),
             // (18,24): error CS8337: The first parameter of a 'ref' extension method 'M2' must be a value type or a generic type constrained to struct.
             //     public static void M2(this ref C c) { }
             Diagnostic(ErrorCode.ERR_RefExtensionMustBeValueTypeOrConstrainedToOne, "M2").WithArguments("M2").WithLocation(18, 24));
@@ -26726,7 +27976,6 @@ static class E
     [Fact]
     public void Nullability_Method_01()
     {
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Nullability is undone
         string source = """
 #nullable enable
 
@@ -26742,16 +27991,12 @@ static class E
 }
 """;
         var comp = CreateCompilation(source);
-        comp.VerifyEmitDiagnostics(
-            // (4,1): warning CS8602: Dereference of a possibly null reference.
-            // s.M();
-            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "s").WithLocation(4, 1));
-        CompileAndVerify(comp, expectedOutput: "True");
+        CompileAndVerify(comp, expectedOutput: "True").VerifyDiagnostics();
 
         var tree = comp.SyntaxTrees.First();
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "s.M");
-        Assert.Equal("void E.<>E__0<System.String>.M()", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+        Assert.Equal("void E.<>E__0<System.String?>.M()", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
     }
 
     [Fact]
@@ -26772,14 +28017,12 @@ static class E
 }
 """;
         var comp = CreateCompilation(source);
-        comp.VerifyEmitDiagnostics();
-        CompileAndVerify(comp, expectedOutput: "True");
+        CompileAndVerify(comp, expectedOutput: "True").VerifyDiagnostics();
 
         var tree = comp.SyntaxTrees.First();
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "s.M");
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : Nullability is undone
-        Assert.Equal("void E.<>E__0<System.String>.M(System.String t2)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
+        Assert.Equal("void E.<>E__0<System.String?>.M(System.String? t2)", model.GetSymbolInfo(memberAccess).Symbol.ToTestDisplayString());
     }
 
     [Fact]
@@ -27591,7 +28834,7 @@ static class E
             // (1,9): error CS0117: 'int' does not contain a definition for 'Const'
             // _ = int.Const;
             Diagnostic(ErrorCode.ERR_NoSuchMember, "Const").WithArguments("int", "Const").WithLocation(1, 9),
-            // (7,26): error CS9282: Extension declarations can include only methods or properties
+            // (7,26): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         public const int Const = 42;
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Const").WithLocation(7, 26));
     }
@@ -27624,7 +28867,7 @@ static class E
             IL_0001: throw
         }
     }
-    .method public hidebysig specialname static void 'M' ( int32[] i ) cil managed 
+    .method public hidebysig static void 'M' ( int32[] i ) cil managed 
     {
         .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = (
             01 00 00 00
@@ -27698,7 +28941,7 @@ i.M(2);
             .get instance int32 E/'<>E__0'::get_P()
         }
     }
-    .method public hidebysig specialname static int32 'get_P' ( int32[] i ) cil managed 
+    .method public hidebysig static int32 'get_P' ( int32[] i ) cil managed 
     {
         .param [1]
         .custom instance void [mscorlib]System.ParamArrayAttribute::.ctor() = ( 01 00 00 00)
@@ -27964,6 +29207,7 @@ static class E
         var src = """
 42.M<object>(42);
 42.M2<object>(42);
+42.M3<object>(42);
 
 static class E
 {
@@ -27972,7 +29216,12 @@ static class E
         public void M<T>(T t) where T : struct { }
     }
 
-    public static void M2<T>(this int i, T t) where T : struct { }
+    extension<T>(T t) where T : struct
+    {
+        public void M2(int i) { }
+    }
+
+    public static void M3<T>(this int i, T t) where T : struct { }
 }
 """;
         var comp = CreateCompilation(src);
@@ -27980,20 +29229,25 @@ static class E
             // (1,4): error CS0453: The type 'object' must be a non-nullable value type in order to use it as parameter 'T' in the generic type or method 'E.extension(int).M<T>(T)'
             // 42.M<object>(42);
             Diagnostic(ErrorCode.ERR_ValConstraintNotSatisfied, "M<object>").WithArguments("E.extension(int).M<T>(T)", "T", "object").WithLocation(1, 4),
-            // (2,4): error CS0453: The type 'object' must be a non-nullable value type in order to use it as parameter 'T' in the generic type or method 'E.M2<T>(int, T)'
+            // (2,4): error CS0453: The type 'object' must be a non-nullable value type in order to use it as parameter 'T' in the generic type or method 'E.extension<T>(T)'
             // 42.M2<object>(42);
-            Diagnostic(ErrorCode.ERR_ValConstraintNotSatisfied, "M2<object>").WithArguments("E.M2<T>(int, T)", "T", "object").WithLocation(2, 4));
+            Diagnostic(ErrorCode.ERR_ValConstraintNotSatisfied, "M2<object>").WithArguments("E.extension<T>(T)", "T", "object").WithLocation(2, 4),
+            // (3,4): error CS0453: The type 'object' must be a non-nullable value type in order to use it as parameter 'T' in the generic type or method 'E.M3<T>(int, T)'
+            // 42.M3<object>(42);
+            Diagnostic(ErrorCode.ERR_ValConstraintNotSatisfied, "M3<object>").WithArguments("E.M3<T>(int, T)", "T", "object").WithLocation(3, 4));
 
         var tree = comp.SyntaxTrees.First();
         var model = comp.GetSemanticModel(tree);
         var memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M<object>");
         Assert.Null(model.GetSymbolInfo(memberAccess).Symbol);
         Assert.Equal([], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
-        Assert.Equal([], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
 
         memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M2<object>");
         Assert.Null(model.GetSymbolInfo(memberAccess).Symbol);
         Assert.Equal([], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
+
+        memberAccess = GetSyntax<MemberAccessExpressionSyntax>(tree, "42.M3<object>");
+        Assert.Null(model.GetSymbolInfo(memberAccess).Symbol);
         Assert.Equal([], model.GetMemberGroup(memberAccess).ToTestDisplayStrings());
     }
 
@@ -28197,7 +29451,7 @@ public static class E
         var src = """
 public static class E1
 {
-    extension(object)
+    extension(object o)
     {
         public static void M() => throw null;
         public static int Property => throw null;
@@ -28205,7 +29459,7 @@ public static class E1
 }
 public static class E2
 {
-    extension(object)
+    extension(object o)
     {
         public void M() => throw null;
         public int Property => throw null;
@@ -28247,7 +29501,7 @@ public static class E1
 }
 public static class E2
 {
-    extension(object)
+    extension(object o)
     {
         public int MP => throw null;
     }
@@ -28275,7 +29529,7 @@ public static class E2
 
 public static class E
 {
-    extension(object)
+    extension(object o)
     {
         public static void M() => throw null;
         public void M(string s) => throw null;
@@ -28315,7 +29569,7 @@ public static class E
 
         var comp = CreateCompilation(src);
         comp.VerifyEmitDiagnostics(
-            // (6,22): error CS9282: Extension declarations can include only methods or properties
+            // (6,22): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
             //         static class Nested { }
             Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "Nested").WithLocation(6, 22));
 
@@ -29090,7 +30344,7 @@ public static class E
         var libSrc = """
 public static class E
 {
-    extension(object)
+    extension(object o)
     {
         public void M() { }
         public static void M2() { }
@@ -29179,7 +30433,7 @@ _ = object.P;
         var src = """
 static class E
 {
-    extension(object)
+    extension(object o)
     {
         public void M()
         {
@@ -29427,16 +30681,11 @@ static class E
     }
 }
 """;
-        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : we should produce this error instead:
-        // error CS4012: Parameters of type 'Span<int>' cannot be declared in async methods or async lambda expressions.
         var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
         comp.VerifyEmitDiagnostics(
-            // (7,13): error CS4007: Instance of type 'System.Span<int>' cannot be preserved across 'await' or 'yield' boundary.
-            //             s.ToString();
-            Diagnostic(ErrorCode.ERR_ByRefTypeAndAwait, "s").WithArguments("System.Span<int>").WithLocation(7, 13),
-            // (9,13): error CS4007: Instance of type 'System.Span<int>' cannot be preserved across 'await' or 'yield' boundary.
-            //             s.ToString();
-            Diagnostic(ErrorCode.ERR_ByRefTypeAndAwait, "s").WithArguments("System.Span<int>").WithLocation(9, 13));
+            // (5,27): error CS4012: Parameters of type 'Span<int>' cannot be declared in async methods or async lambda expressions.
+            //         public async void M()
+            Diagnostic(ErrorCode.ERR_BadSpecialByRefParameter, "M").WithArguments("System.Span<int>").WithLocation(5, 27));
     }
 
     [Fact]
@@ -29775,7 +31024,7 @@ WrittenOutside: this
         var src = """
 static class E
 {
-    extension(object)
+    extension(object o)
     {
         public void M()
         {
@@ -29948,7 +31197,7 @@ var x = 42.M;
 
 public static class E
 {
-    extension(int)
+    extension(int i)
     {
         public void M<T>() { }
     }
@@ -30299,7 +31548,7 @@ public static class E1
 
 public static class E2
 {
-    extension<T>(T)
+    extension<T>(T t)
     {
         public void M() { }
     }
@@ -30409,6 +31658,7 @@ namespace N
             Assert.Equal("void <>f__AnonymousDelegate0<T1>.Invoke(params T1[] arg)", m.ToTestDisplayString());
         }
     }
+
     [Fact]
     public void Params_ExtensionScopes_07()
     {
@@ -30425,7 +31675,7 @@ namespace N
 {
     static class E2
     {
-        extension(C)
+        extension(C c)
         {
             public void M(int[] x) => System.Console.Write(2);
         }
@@ -31209,5 +32459,4146 @@ class Program
 """;
         var comp = CreateCompilation(src, options: TestOptions.DebugExe);
         CompileAndVerify(comp, expectedOutput: @"1: () => Convert(System.String M(System.String).CreateDelegate(System.Func`2[System.String,System.String], null)" + (ExecutionConditionUtil.IsMonoOrCoreClr ? ", Func`2)" : ")")).VerifyDiagnostics();
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_Async_01()
+    {
+        string source = """
+unsafe static class E
+{
+    extension(int* i)
+    {
+        public static async void M() => throw null;
+        public async void M2() => throw null;
+    }
+}
+""";
+        var comp = CreateCompilation(source, options: TestOptions.UnsafeDebugDll);
+        comp.VerifyEmitDiagnostics(
+            // (3,15): error CS1103: The receiver parameter of an extension cannot be of type 'int*'
+            //     extension(int* i)
+            Diagnostic(ErrorCode.ERR_BadTypeforThis, "int*").WithArguments("int*").WithLocation(3, 15),
+            // (5,34): warning CS1998: This async method lacks 'await' operators and will run synchronously. Consider using the 'await' operator to await non-blocking API calls, or 'await Task.Run(...)' to do CPU-bound work on a background thread.
+            //         public static async void M() => throw null;
+            Diagnostic(ErrorCode.WRN_AsyncLacksAwaits, "M").WithLocation(5, 34),
+            // (6,27): warning CS1998: This async method lacks 'await' operators and will run synchronously. Consider using the 'await' operator to await non-blocking API calls, or 'await Task.Run(...)' to do CPU-bound work on a background thread.
+            //         public async void M2() => throw null;
+            Diagnostic(ErrorCode.WRN_AsyncLacksAwaits, "M2").WithLocation(6, 27));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_Async_02()
+    {
+        string source = """
+static class E
+{
+    extension(ref int i)
+    {
+        public static async void M() { await System.Threading.Tasks.Task.Yield(); }
+        public async void M2() { await System.Threading.Tasks.Task.Yield(); }
+    }
+}
+""";
+        var comp = CreateCompilation(source, options: TestOptions.UnsafeDebugDll);
+        comp.VerifyEmitDiagnostics(
+            // (6,27): error CS1988: Async methods cannot have ref, in or out parameters
+            //         public async void M2() { await System.Threading.Tasks.Task.Yield(); }
+            Diagnostic(ErrorCode.ERR_BadAsyncArgType, "M2").WithLocation(6, 27));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_Async_03()
+    {
+        string source = """
+static class E
+{
+    extension(System.Span<int> i)
+    {
+        public static async void M() { await System.Threading.Tasks.Task.Yield(); }
+    }
+    extension(System.Span<int> i)
+    {
+        public async void M2() { await System.Threading.Tasks.Task.Yield(); }
+    }
+}
+""";
+        var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+        comp.VerifyEmitDiagnostics(
+            // (9,27): error CS4012: Parameters of type 'Span<int>' cannot be declared in async methods or async lambda expressions.
+            //         public async void M2() { await System.Threading.Tasks.Task.Yield(); }
+            Diagnostic(ErrorCode.ERR_BadSpecialByRefParameter, "M2").WithArguments("System.Span<int>").WithLocation(9, 27));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_Iterator_01()
+    {
+        string source = """
+static class E
+{
+    extension(ref int i)
+    {
+        public static System.Collections.Generic.IEnumerator<int> M() { yield return 0; }
+    }
+    extension(ref int i)
+    {
+        public System.Collections.Generic.IEnumerator<int> M2() { yield return 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (9,60): error CS1623: Iterators cannot have ref, in or out parameters
+            //         public System.Collections.Generic.IEnumerator<int> M2() { yield return 0; }
+            Diagnostic(ErrorCode.ERR_BadIteratorArgType, "M2").WithLocation(9, 60));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_Iterator_02()
+    {
+        string source = """
+unsafe static class E
+{
+    extension(int* i)
+    {
+        public static System.Collections.Generic.IEnumerator<int> M() { yield return 0; }
+    }
+    extension(int* i)
+    {
+        public System.Collections.Generic.IEnumerator<int> M2() { yield return 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source, options: TestOptions.UnsafeDebugDll);
+        comp.VerifyEmitDiagnostics(
+            // (3,15): error CS1103: The receiver parameter of an extension cannot be of type 'int*'
+            //     extension(int* i)
+            Diagnostic(ErrorCode.ERR_BadTypeforThis, "int*").WithArguments("int*").WithLocation(3, 15),
+            // (7,15): error CS1103: The receiver parameter of an extension cannot be of type 'int*'
+            //     extension(int* i)
+            Diagnostic(ErrorCode.ERR_BadTypeforThis, "int*").WithArguments("int*").WithLocation(7, 15));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_CancellationTokenParameter_Static()
+    {
+        string source = """
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+static class C
+{
+    extension([EnumeratorCancellation] CancellationToken token1)
+    {
+        static async System.Collections.Generic.IAsyncEnumerable<int> Iter(int value, [EnumeratorCancellation] CancellationToken token2)
+        {
+            _ = token2.IsCancellationRequested;
+            yield return value++;
+            await Task.Yield();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(source, targetFramework: TargetFramework.Net90);
+        comp.VerifyDiagnostics(
+            // (7,16): warning CS8424: The EnumeratorCancellationAttribute applied to parameter 'token1' will have no effect. The attribute is only effective on a parameter of type CancellationToken in an async-iterator method returning IAsyncEnumerable
+            //     extension([EnumeratorCancellation] CancellationToken token1)
+            Diagnostic(ErrorCode.WRN_UnconsumedEnumeratorCancellationAttributeUsage, "EnumeratorCancellation").WithArguments("token1").WithLocation(7, 16));
+
+        var verifier = CompileAndVerify(comp, verify: Verification.FailsPEVerify);
+        verifier.VerifyIL("C.<Iter>d__1.System.Collections.Generic.IAsyncEnumerable<int>.GetAsyncEnumerator(System.Threading.CancellationToken)", """
+{
+  // Code size      188 (0xbc)
+  .maxstack  3
+  .locals init (C.<Iter>d__1 V_0,
+                System.Threading.CancellationToken V_1)
+  IL_0000:  ldarg.0
+  IL_0001:  ldfld      "int C.<Iter>d__1.<>1__state"
+  IL_0006:  ldc.i4.s   -2
+  IL_0008:  bne.un.s   IL_0035
+  IL_000a:  ldarg.0
+  IL_000b:  ldfld      "int C.<Iter>d__1.<>l__initialThreadId"
+  IL_0010:  call       "int System.Environment.CurrentManagedThreadId.get"
+  IL_0015:  bne.un.s   IL_0035
+  IL_0017:  ldarg.0
+  IL_0018:  ldc.i4.s   -3
+  IL_001a:  stfld      "int C.<Iter>d__1.<>1__state"
+  IL_001f:  ldarg.0
+  IL_0020:  call       "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder System.Runtime.CompilerServices.AsyncIteratorMethodBuilder.Create()"
+  IL_0025:  stfld      "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder C.<Iter>d__1.<>t__builder"
+  IL_002a:  ldarg.0
+  IL_002b:  ldc.i4.0
+  IL_002c:  stfld      "bool C.<Iter>d__1.<>w__disposeMode"
+  IL_0031:  ldarg.0
+  IL_0032:  stloc.0
+  IL_0033:  br.s       IL_003d
+  IL_0035:  ldc.i4.s   -3
+  IL_0037:  newobj     "C.<Iter>d__1..ctor(int)"
+  IL_003c:  stloc.0
+  IL_003d:  ldloc.0
+  IL_003e:  ldarg.0
+  IL_003f:  ldfld      "int C.<Iter>d__1.<>3__value"
+  IL_0044:  stfld      "int C.<Iter>d__1.value"
+  IL_0049:  ldarg.0
+  IL_004a:  ldflda     "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_004f:  ldloca.s   V_1
+  IL_0051:  initobj    "System.Threading.CancellationToken"
+  IL_0057:  ldloc.1
+  IL_0058:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_005d:  brfalse.s  IL_0068
+  IL_005f:  ldloc.0
+  IL_0060:  ldarg.1
+  IL_0061:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token2"
+  IL_0066:  br.s       IL_00ba
+  IL_0068:  ldarga.s   V_1
+  IL_006a:  ldarg.0
+  IL_006b:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_0070:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_0075:  brtrue.s   IL_0089
+  IL_0077:  ldarga.s   V_1
+  IL_0079:  ldloca.s   V_1
+  IL_007b:  initobj    "System.Threading.CancellationToken"
+  IL_0081:  ldloc.1
+  IL_0082:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_0087:  brfalse.s  IL_0097
+  IL_0089:  ldloc.0
+  IL_008a:  ldarg.0
+  IL_008b:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_0090:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token2"
+  IL_0095:  br.s       IL_00ba
+  IL_0097:  ldarg.0
+  IL_0098:  ldarg.0
+  IL_0099:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_009e:  ldarg.1
+  IL_009f:  call       "System.Threading.CancellationTokenSource System.Threading.CancellationTokenSource.CreateLinkedTokenSource(System.Threading.CancellationToken, System.Threading.CancellationToken)"
+  IL_00a4:  stfld      "System.Threading.CancellationTokenSource C.<Iter>d__1.<>x__combinedTokens"
+  IL_00a9:  ldloc.0
+  IL_00aa:  ldarg.0
+  IL_00ab:  ldfld      "System.Threading.CancellationTokenSource C.<Iter>d__1.<>x__combinedTokens"
+  IL_00b0:  callvirt   "System.Threading.CancellationToken System.Threading.CancellationTokenSource.Token.get"
+  IL_00b5:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token2"
+  IL_00ba:  ldloc.0
+  IL_00bb:  ret
+}
+""");
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_CancellationTokenParameter_Static_FirstParameter()
+    {
+        string source = """
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+static class C
+{
+    extension(int)
+    {
+        static async System.Collections.Generic.IAsyncEnumerable<int> Iter([EnumeratorCancellation] CancellationToken token)
+        {
+            _ = token.IsCancellationRequested;
+            yield return 0;
+            await Task.Yield();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(source, targetFramework: TargetFramework.Net90);
+        comp.VerifyDiagnostics();
+
+        var verifier = CompileAndVerify(comp, verify: Verification.FailsPEVerify);
+        verifier.VerifyIL("C.<Iter>d__1.System.Collections.Generic.IAsyncEnumerable<int>.GetAsyncEnumerator(System.Threading.CancellationToken)", """
+{
+  // Code size      176 (0xb0)
+  .maxstack  3
+  .locals init (C.<Iter>d__1 V_0,
+                System.Threading.CancellationToken V_1)
+  IL_0000:  ldarg.0
+  IL_0001:  ldfld      "int C.<Iter>d__1.<>1__state"
+  IL_0006:  ldc.i4.s   -2
+  IL_0008:  bne.un.s   IL_0035
+  IL_000a:  ldarg.0
+  IL_000b:  ldfld      "int C.<Iter>d__1.<>l__initialThreadId"
+  IL_0010:  call       "int System.Environment.CurrentManagedThreadId.get"
+  IL_0015:  bne.un.s   IL_0035
+  IL_0017:  ldarg.0
+  IL_0018:  ldc.i4.s   -3
+  IL_001a:  stfld      "int C.<Iter>d__1.<>1__state"
+  IL_001f:  ldarg.0
+  IL_0020:  call       "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder System.Runtime.CompilerServices.AsyncIteratorMethodBuilder.Create()"
+  IL_0025:  stfld      "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder C.<Iter>d__1.<>t__builder"
+  IL_002a:  ldarg.0
+  IL_002b:  ldc.i4.0
+  IL_002c:  stfld      "bool C.<Iter>d__1.<>w__disposeMode"
+  IL_0031:  ldarg.0
+  IL_0032:  stloc.0
+  IL_0033:  br.s       IL_003d
+  IL_0035:  ldc.i4.s   -3
+  IL_0037:  newobj     "C.<Iter>d__1..ctor(int)"
+  IL_003c:  stloc.0
+  IL_003d:  ldarg.0
+  IL_003e:  ldflda     "System.Threading.CancellationToken C.<Iter>d__1.<>3__token"
+  IL_0043:  ldloca.s   V_1
+  IL_0045:  initobj    "System.Threading.CancellationToken"
+  IL_004b:  ldloc.1
+  IL_004c:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_0051:  brfalse.s  IL_005c
+  IL_0053:  ldloc.0
+  IL_0054:  ldarg.1
+  IL_0055:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token"
+  IL_005a:  br.s       IL_00ae
+  IL_005c:  ldarga.s   V_1
+  IL_005e:  ldarg.0
+  IL_005f:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token"
+  IL_0064:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_0069:  brtrue.s   IL_007d
+  IL_006b:  ldarga.s   V_1
+  IL_006d:  ldloca.s   V_1
+  IL_006f:  initobj    "System.Threading.CancellationToken"
+  IL_0075:  ldloc.1
+  IL_0076:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_007b:  brfalse.s  IL_008b
+  IL_007d:  ldloc.0
+  IL_007e:  ldarg.0
+  IL_007f:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token"
+  IL_0084:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token"
+  IL_0089:  br.s       IL_00ae
+  IL_008b:  ldarg.0
+  IL_008c:  ldarg.0
+  IL_008d:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token"
+  IL_0092:  ldarg.1
+  IL_0093:  call       "System.Threading.CancellationTokenSource System.Threading.CancellationTokenSource.CreateLinkedTokenSource(System.Threading.CancellationToken, System.Threading.CancellationToken)"
+  IL_0098:  stfld      "System.Threading.CancellationTokenSource C.<Iter>d__1.<>x__combinedTokens"
+  IL_009d:  ldloc.0
+  IL_009e:  ldarg.0
+  IL_009f:  ldfld      "System.Threading.CancellationTokenSource C.<Iter>d__1.<>x__combinedTokens"
+  IL_00a4:  callvirt   "System.Threading.CancellationToken System.Threading.CancellationTokenSource.Token.get"
+  IL_00a9:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token"
+  IL_00ae:  ldloc.0
+  IL_00af:  ret
+}
+""");
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_CancellationTokenParameter_Instance()
+    {
+        string source = """
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+static class C
+{
+    extension([EnumeratorCancellation] CancellationToken token1)
+    {
+        async System.Collections.Generic.IAsyncEnumerable<int> Iter(int value)
+        {
+            _ = token1.IsCancellationRequested;
+            yield return value++;
+            await Task.Yield();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(source, targetFramework: TargetFramework.Net90);
+        comp.VerifyDiagnostics(
+            // (7,16): warning CS8424: The EnumeratorCancellationAttribute applied to parameter 'token1' will have no effect. The attribute is only effective on a parameter of type CancellationToken in an async-iterator method returning IAsyncEnumerable
+            //     extension([EnumeratorCancellation] CancellationToken token1)
+            Diagnostic(ErrorCode.WRN_UnconsumedEnumeratorCancellationAttributeUsage, "EnumeratorCancellation").WithArguments("token1").WithLocation(7, 16));
+
+        var verifier = CompileAndVerify(comp, verify: Verification.FailsPEVerify);
+        verifier.VerifyIL("C.<Iter>d__1.System.Collections.Generic.IAsyncEnumerable<int>.GetAsyncEnumerator(System.Threading.CancellationToken)", """
+{
+  // Code size       87 (0x57)
+  .maxstack  2
+  .locals init (C.<Iter>d__1 V_0)
+  IL_0000:  ldarg.0
+  IL_0001:  ldfld      "int C.<Iter>d__1.<>1__state"
+  IL_0006:  ldc.i4.s   -2
+  IL_0008:  bne.un.s   IL_0035
+  IL_000a:  ldarg.0
+  IL_000b:  ldfld      "int C.<Iter>d__1.<>l__initialThreadId"
+  IL_0010:  call       "int System.Environment.CurrentManagedThreadId.get"
+  IL_0015:  bne.un.s   IL_0035
+  IL_0017:  ldarg.0
+  IL_0018:  ldc.i4.s   -3
+  IL_001a:  stfld      "int C.<Iter>d__1.<>1__state"
+  IL_001f:  ldarg.0
+  IL_0020:  call       "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder System.Runtime.CompilerServices.AsyncIteratorMethodBuilder.Create()"
+  IL_0025:  stfld      "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder C.<Iter>d__1.<>t__builder"
+  IL_002a:  ldarg.0
+  IL_002b:  ldc.i4.0
+  IL_002c:  stfld      "bool C.<Iter>d__1.<>w__disposeMode"
+  IL_0031:  ldarg.0
+  IL_0032:  stloc.0
+  IL_0033:  br.s       IL_003d
+  IL_0035:  ldc.i4.s   -3
+  IL_0037:  newobj     "C.<Iter>d__1..ctor(int)"
+  IL_003c:  stloc.0
+  IL_003d:  ldloc.0
+  IL_003e:  ldarg.0
+  IL_003f:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token1"
+  IL_0044:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token1"
+  IL_0049:  ldloc.0
+  IL_004a:  ldarg.0
+  IL_004b:  ldfld      "int C.<Iter>d__1.<>3__value"
+  IL_0050:  stfld      "int C.<Iter>d__1.value"
+  IL_0055:  ldloc.0
+  IL_0056:  ret
+}
+""");
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_CancellationTokenParameter_Instance_Multiple()
+    {
+        string source = """
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
+static class C
+{
+    extension([EnumeratorCancellation] CancellationToken token1)
+    {
+        async System.Collections.Generic.IAsyncEnumerable<int> Iter(int value, [EnumeratorCancellation] CancellationToken token2)
+        {
+            _ = token1.IsCancellationRequested;
+            _ = token2.IsCancellationRequested;
+            yield return value++;
+            await Task.Yield();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(source, targetFramework: TargetFramework.Net90);
+        comp.VerifyDiagnostics(
+            // (7,16): warning CS8424: The EnumeratorCancellationAttribute applied to parameter 'token1' will have no effect. The attribute is only effective on a parameter of type CancellationToken in an async-iterator method returning IAsyncEnumerable
+            //     extension([EnumeratorCancellation] CancellationToken token1)
+            Diagnostic(ErrorCode.WRN_UnconsumedEnumeratorCancellationAttributeUsage, "EnumeratorCancellation").WithArguments("token1").WithLocation(7, 16));
+
+        var verifier = CompileAndVerify(comp, verify: Verification.FailsPEVerify);
+        verifier.VerifyIL("C.<Iter>d__1.System.Collections.Generic.IAsyncEnumerable<int>.GetAsyncEnumerator(System.Threading.CancellationToken)", """
+{
+  // Code size      200 (0xc8)
+  .maxstack  3
+  .locals init (C.<Iter>d__1 V_0,
+                System.Threading.CancellationToken V_1)
+  IL_0000:  ldarg.0
+  IL_0001:  ldfld      "int C.<Iter>d__1.<>1__state"
+  IL_0006:  ldc.i4.s   -2
+  IL_0008:  bne.un.s   IL_0035
+  IL_000a:  ldarg.0
+  IL_000b:  ldfld      "int C.<Iter>d__1.<>l__initialThreadId"
+  IL_0010:  call       "int System.Environment.CurrentManagedThreadId.get"
+  IL_0015:  bne.un.s   IL_0035
+  IL_0017:  ldarg.0
+  IL_0018:  ldc.i4.s   -3
+  IL_001a:  stfld      "int C.<Iter>d__1.<>1__state"
+  IL_001f:  ldarg.0
+  IL_0020:  call       "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder System.Runtime.CompilerServices.AsyncIteratorMethodBuilder.Create()"
+  IL_0025:  stfld      "System.Runtime.CompilerServices.AsyncIteratorMethodBuilder C.<Iter>d__1.<>t__builder"
+  IL_002a:  ldarg.0
+  IL_002b:  ldc.i4.0
+  IL_002c:  stfld      "bool C.<Iter>d__1.<>w__disposeMode"
+  IL_0031:  ldarg.0
+  IL_0032:  stloc.0
+  IL_0033:  br.s       IL_003d
+  IL_0035:  ldc.i4.s   -3
+  IL_0037:  newobj     "C.<Iter>d__1..ctor(int)"
+  IL_003c:  stloc.0
+  IL_003d:  ldloc.0
+  IL_003e:  ldarg.0
+  IL_003f:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token1"
+  IL_0044:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token1"
+  IL_0049:  ldloc.0
+  IL_004a:  ldarg.0
+  IL_004b:  ldfld      "int C.<Iter>d__1.<>3__value"
+  IL_0050:  stfld      "int C.<Iter>d__1.value"
+  IL_0055:  ldarg.0
+  IL_0056:  ldflda     "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_005b:  ldloca.s   V_1
+  IL_005d:  initobj    "System.Threading.CancellationToken"
+  IL_0063:  ldloc.1
+  IL_0064:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_0069:  brfalse.s  IL_0074
+  IL_006b:  ldloc.0
+  IL_006c:  ldarg.1
+  IL_006d:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token2"
+  IL_0072:  br.s       IL_00c6
+  IL_0074:  ldarga.s   V_1
+  IL_0076:  ldarg.0
+  IL_0077:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_007c:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_0081:  brtrue.s   IL_0095
+  IL_0083:  ldarga.s   V_1
+  IL_0085:  ldloca.s   V_1
+  IL_0087:  initobj    "System.Threading.CancellationToken"
+  IL_008d:  ldloc.1
+  IL_008e:  call       "bool System.Threading.CancellationToken.Equals(System.Threading.CancellationToken)"
+  IL_0093:  brfalse.s  IL_00a3
+  IL_0095:  ldloc.0
+  IL_0096:  ldarg.0
+  IL_0097:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_009c:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token2"
+  IL_00a1:  br.s       IL_00c6
+  IL_00a3:  ldarg.0
+  IL_00a4:  ldarg.0
+  IL_00a5:  ldfld      "System.Threading.CancellationToken C.<Iter>d__1.<>3__token2"
+  IL_00aa:  ldarg.1
+  IL_00ab:  call       "System.Threading.CancellationTokenSource System.Threading.CancellationTokenSource.CreateLinkedTokenSource(System.Threading.CancellationToken, System.Threading.CancellationToken)"
+  IL_00b0:  stfld      "System.Threading.CancellationTokenSource C.<Iter>d__1.<>x__combinedTokens"
+  IL_00b5:  ldloc.0
+  IL_00b6:  ldarg.0
+  IL_00b7:  ldfld      "System.Threading.CancellationTokenSource C.<Iter>d__1.<>x__combinedTokens"
+  IL_00bc:  callvirt   "System.Threading.CancellationToken System.Threading.CancellationTokenSource.Token.get"
+  IL_00c1:  stfld      "System.Threading.CancellationToken C.<Iter>d__1.token2"
+  IL_00c6:  ldloc.0
+  IL_00c7:  ret
+}
+""");
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_UnnamedReceiverParameter()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public void M1() { }
+        public static void M2() { }
+        public int P1 => 0;
+        public static int P2 => 0;
+    }
+    extension(int)
+    {
+        public void M3() { } // 1
+        public static void M4() { }
+        public int P3 => 0; // 2
+        public static int P4 => 0;
+        public int this[int j] => 0; // 3
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (12,21): error CS9303: 'M3': cannot declare instance members in an extension block with an unnamed receiver parameter
+            //         public void M3() { } // 1
+            Diagnostic(ErrorCode.ERR_InstanceMemberWithUnnamedExtensionsParameter, "M3").WithArguments("M3").WithLocation(12, 21),
+            // (14,20): error CS9303: 'P3': cannot declare instance members in an extension block with an unnamed receiver parameter
+            //         public int P3 => 0; // 2
+            Diagnostic(ErrorCode.ERR_InstanceMemberWithUnnamedExtensionsParameter, "P3").WithArguments("P3").WithLocation(14, 20),
+            // (16,20): error CS9303: 'this[]': cannot declare instance members in an extension block with an unnamed receiver parameter
+            //         public int this[int j] => 0; // 3
+            Diagnostic(ErrorCode.ERR_InstanceMemberWithUnnamedExtensionsParameter, "this").WithArguments("this[]").WithLocation(16, 20));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_UnnamedReceiverParameter_Ref()
+    {
+        string source = """
+static class E
+{
+    extension(ref int)
+    {
+    }
+    extension(ref string)
+    {
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (3,19): error CS9305: Cannot use modifiers on the unnamed receiver parameter of extension block
+            //     extension(ref int)
+            Diagnostic(ErrorCode.ERR_ModifierOnUnnamedReceiverParameter, "int").WithLocation(3, 19),
+            // (6,19): error CS9300: The 'ref' receiver parameter of an extension block must be a value type or a generic type constrained to struct.
+            //     extension(ref string)
+            Diagnostic(ErrorCode.ERR_RefExtensionParameterMustBeValueTypeOrConstrainedToOne, "string").WithLocation(6, 19),
+            // (6,19): error CS9305: Cannot use modifiers on the unnamed receiver parameter of extension block
+            //     extension(ref string)
+            Diagnostic(ErrorCode.ERR_ModifierOnUnnamedReceiverParameter, "string").WithLocation(6, 19));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_UnnamedReceiverParameter_Out()
+    {
+        string source = """
+static class E
+{
+    extension(out int)
+    {
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (3,15): error CS8328:  The parameter modifier 'out' cannot be used with 'extension'
+            //     extension(out int)
+            Diagnostic(ErrorCode.ERR_BadParameterModifiers, "out").WithArguments("out", "extension").WithLocation(3, 15),
+            // (3,19): error CS9305: Cannot use modifiers on the unnamed receiver parameter of extension block
+            //     extension(out int)
+            Diagnostic(ErrorCode.ERR_ModifierOnUnnamedReceiverParameter, "int").WithLocation(3, 19));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_UnnamedReceiverParameter_Scoped()
+    {
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : This should probably parse (but still error)
+        string source = """
+static class E
+{
+    extension(scoped RS)
+    {
+    }
+}
+ref struct RS { }
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (3,15): error CS0246: The type or namespace name 'scoped' could not be found (are you missing a using directive or an assembly reference?)
+            //     extension(scoped RS)
+            Diagnostic(ErrorCode.ERR_SingleTypeNameNotFound, "scoped").WithArguments("scoped").WithLocation(3, 15));
+    }
+
+    [Fact]
+    public void ReceiverParameterValidation_UnnamedReceiverParameter_FromMetadata()
+    {
+        // extension(int)
+        // {
+        //    public void M3() { }
+        //    public static void M4() { }
+        //    public int P3 => 0;
+        //    public static int P4 => 0;
+        // }
+        var ilSrc = """
+.class public auto ansi abstract sealed beforefieldinit E
+    extends [mscorlib]System.Object
+{
+    .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = ( 01 00 00 00 )
+
+    .class nested public auto ansi sealed beforefieldinit '<>E__0'
+        extends [mscorlib]System.Object
+    {
+        .method private hidebysig specialname static void '<Extension>$' ( int32 '' ) cil managed 
+        {
+            .custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 )
+            IL_0000: ret
+        }
+        .method public hidebysig instance void M3 () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .method public hidebysig static void M4 () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .method public hidebysig specialname instance int32 get_P3 () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .method public hidebysig specialname static int32 get_P4 () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .property instance int32 P3()
+        {
+            .get instance int32 E/'<>E__0'::get_P3()
+        }
+        .property int32 P4()
+        {
+            .get int32 E/'<>E__0'::get_P4()
+        }
+    }
+    .method public hidebysig static void M3 ( int32 '' ) cil managed 
+    {
+        .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = ( 01 00 00 00 )
+        IL_0000: ret
+    }
+    .method public hidebysig static void M4 () cil managed 
+    {
+        IL_0000: ret
+    }
+    .method public hidebysig static int32 get_P3 ( int32 '' ) cil managed 
+    {
+        IL_0000: ldc.i4.0
+        IL_0001: ret
+    }
+    .method public hidebysig static int32 get_P4 () cil managed 
+    {
+        IL_0000: ldc.i4.0
+        IL_0001: ret
+    }
+}
+""";
+        string source = """
+42.M3();
+int.M4();
+_ = 42.P3;
+_ = int.P4;
+""";
+        var comp = CreateCompilationWithIL(source, ilSrc);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void AsyncInSecurityCriticalClass()
+    {
+        var source = """
+using System.Security;
+using System.Threading.Tasks;
+
+[SecurityCritical]
+public static class C
+{
+    extension(int i)
+    {
+        public async void M()
+        {
+            await Task.Factory.StartNew(() => { });
+        }
+    }
+}
+""";
+        CreateCompilation(source).VerifyDiagnostics(
+            // (9,27): error CS4031: Async methods are not allowed in an Interface, Class, or Structure which has the 'SecurityCritical' or 'SecuritySafeCritical' attribute.
+            //         public async void M()
+            Diagnostic(ErrorCode.ERR_SecurityCriticalOrSecuritySafeCriticalOnAsyncInClassOrStruct, "M").WithLocation(9, 27));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Virtual()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public virtual void M() { }
+        public virtual int P { get => 0; set { } }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,29): error CS0106: The modifier 'virtual' is not valid for this item
+            //         public virtual void M() { }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "M").WithArguments("virtual").WithLocation(5, 29),
+            // (6,28): error CS0106: The modifier 'virtual' is not valid for this item
+            //         public virtual int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("virtual").WithLocation(6, 28));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Abstract()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public abstract void M();
+        public abstract int P { get; }
+        public abstract int P2 { set; }
+        public abstract int this[int j] { get; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,30): error CS0106: The modifier 'abstract' is not valid for this item
+            //         public abstract void M();
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "M").WithArguments("abstract").WithLocation(5, 30),
+            // (5,30): error CS0501: 'E.extension(int).M()' must declare a body because it is not marked abstract, extern, or partial
+            //         public abstract void M();
+            Diagnostic(ErrorCode.ERR_ConcreteMissingBody, "M").WithArguments("E.extension(int).M()").WithLocation(5, 30),
+            // (6,29): error CS0106: The modifier 'abstract' is not valid for this item
+            //         public abstract int P { get; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("abstract").WithLocation(6, 29),
+            // (6,29): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
+            //         public abstract int P { get; }
+            Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "P").WithLocation(6, 29),
+            // (7,29): error CS0106: The modifier 'abstract' is not valid for this item
+            //         public abstract int P2 { set; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P2").WithArguments("abstract").WithLocation(7, 29),
+            // (7,29): error CS9282: Extension declarations can include only methods, non-conversion operators or properties
+            //         public abstract int P2 { set; }
+            Diagnostic(ErrorCode.ERR_ExtensionDisallowsMember, "P2").WithLocation(7, 29),
+            // (7,34): error CS8051: Auto-implemented properties must have get accessors.
+            //         public abstract int P2 { set; }
+            Diagnostic(ErrorCode.ERR_AutoPropertyMustHaveGetAccessor, "set").WithLocation(7, 34),
+            // (8,29): error CS0106: The modifier 'abstract' is not valid for this item
+            //         public abstract int this[int j] { get; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "this").WithArguments("abstract").WithLocation(8, 29),
+            // (8,43): error CS0501: 'E.extension(int).this[int].get' must declare a body because it is not marked abstract, extern, or partial
+            //         public abstract int this[int j] { get; }
+            Diagnostic(ErrorCode.ERR_ConcreteMissingBody, "get").WithArguments("E.extension(int).this[int].get").WithLocation(8, 43));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_New()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public new string ToString() => "";
+        public new int P { get => 0; }
+        public new int this[int j] { get => 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,27): error CS0106: The modifier 'new' is not valid for this item
+            //         public new string ToString() => "";
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "ToString").WithArguments("new").WithLocation(5, 27),
+            // (6,24): error CS0106: The modifier 'new' is not valid for this item
+            //         public new int P { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("new").WithLocation(6, 24),
+            // (7,24): error CS0106: The modifier 'new' is not valid for this item
+            //         public new int this[int j] { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "this").WithArguments("new").WithLocation(7, 24));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Override()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public override string ToString() => "";
+        public override int P { get => 0; }
+        public override int this[int j] { get => 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,32): error CS0106: The modifier 'override' is not valid for this item
+            //         public override string ToString() => "";
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "ToString").WithArguments("override").WithLocation(5, 32),
+            // (6,29): error CS0106: The modifier 'override' is not valid for this item
+            //         public override int P { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("override").WithLocation(6, 29),
+            // (7,29): error CS0106: The modifier 'override' is not valid for this item
+            //         public override int this[int j] { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "this").WithArguments("override").WithLocation(7, 29));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Partial()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        partial void M();
+        partial void M() { }
+        partial int P { get; set; }
+        partial int P { get => 0; set { } }
+        partial int this[int j] { get; }
+        partial int this[int j] { get => 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,22): error CS0751: A partial member must be declared within a partial type
+            //         partial void M();
+            Diagnostic(ErrorCode.ERR_PartialMemberOnlyInPartialClass, "M").WithLocation(5, 22),
+            // (6,22): error CS0751: A partial member must be declared within a partial type
+            //         partial void M() { }
+            Diagnostic(ErrorCode.ERR_PartialMemberOnlyInPartialClass, "M").WithLocation(6, 22),
+            // (7,21): error CS0751: A partial member must be declared within a partial type
+            //         partial int P { get; set; }
+            Diagnostic(ErrorCode.ERR_PartialMemberOnlyInPartialClass, "P").WithLocation(7, 21),
+            // (9,21): error CS0751: A partial member must be declared within a partial type
+            //         partial int this[int j] { get; }
+            Diagnostic(ErrorCode.ERR_PartialMemberOnlyInPartialClass, "this").WithLocation(9, 21));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Sealed()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        sealed void M() { }
+        sealed int P { get => 0; set { } }
+        sealed int this[int j] { get => 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,21): error CS0106: The modifier 'sealed' is not valid for this item
+            //         sealed void M() { }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "M").WithArguments("sealed").WithLocation(5, 21),
+            // (6,20): error CS0106: The modifier 'sealed' is not valid for this item
+            //         sealed int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("sealed").WithLocation(6, 20),
+            // (7,20): error CS0106: The modifier 'sealed' is not valid for this item
+            //         sealed int this[int j] { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "this").WithArguments("sealed").WithLocation(7, 20));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Readonly()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        readonly void M() { }
+        readonly int P { get => 0; set { } }
+        int P2 { readonly get => 0; readonly set { } }
+        readonly int this[int j] { get => 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,23): error CS0106: The modifier 'readonly' is not valid for this item
+            //         readonly void M() { }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "M").WithArguments("readonly").WithLocation(5, 23),
+            // (6,22): error CS0106: The modifier 'readonly' is not valid for this item
+            //         readonly int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("readonly").WithLocation(6, 22),
+            // (7,27): error CS0106: The modifier 'readonly' is not valid for this item
+            //         int P2 { readonly get => 0; readonly set { } }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "get").WithArguments("readonly").WithLocation(7, 27),
+            // (7,46): error CS0106: The modifier 'readonly' is not valid for this item
+            //         int P2 { readonly get => 0; readonly set { } }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "set").WithArguments("readonly").WithLocation(7, 46),
+            // (8,22): error CS0106: The modifier 'readonly' is not valid for this item
+            //         readonly int this[int j] { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "this").WithArguments("readonly").WithLocation(8, 22));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Required()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        required void M() { }
+        required int P { get => 0; set { } }
+        required int this[int j] { get => 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (5,23): error CS0106: The modifier 'required' is not valid for this item
+            //         required void M() { }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "M").WithArguments("required").WithLocation(5, 23),
+            // (6,22): error CS0106: The modifier 'required' is not valid for this item
+            //         required int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("required").WithLocation(6, 22),
+            // (7,22): error CS0106: The modifier 'required' is not valid for this item
+            //         required int this[int j] { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "this").WithArguments("required").WithLocation(7, 22));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Extern()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        extern void M() { }
+        extern int P { get => 0; set { } }
+        extern int this[int j] { get => 0; }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,21): error CS0106: The modifier 'extern' is not valid for this item
+            //         extern void M() { }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "M").WithArguments("extern").WithLocation(5, 21),
+            // (6,20): error CS0106: The modifier 'extern' is not valid for this item
+            //         extern int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "P").WithArguments("extern").WithLocation(6, 20),
+            // (7,20): error CS0106: The modifier 'extern' is not valid for this item
+            //         extern int this[int j] { get => 0; }
+            Diagnostic(ErrorCode.ERR_BadMemberFlag, "this").WithArguments("extern").WithLocation(7, 20));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Unsafe()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        unsafe int* M() => throw null;
+        unsafe int* P { get => throw null; set { } }
+        unsafe int* this[int j] { get => throw null; }
+    }
+}
+""";
+        var comp = CreateCompilation(source, options: TestOptions.UnsafeDebugDll);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void Validation_Modifiers_Protected()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        protected void M() { }
+        protected int P { get => 0; set { } }
+        public int P2 { protected get => 0; set { } }
+        public int P3 { get => 0; protected set { } }
+        protected int this[int j] { get => throw null; }
+        public int this[int j, int k] { protected get => throw null; set { } }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,24): error CS9302: 'E.extension(int).M()': new protected member declared in an extension block
+            //         protected void M() { }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "M").WithArguments("E.extension(int).M()").WithLocation(5, 24),
+            // (6,23): error CS9302: 'E.extension(int).P': new protected member declared in an extension block
+            //         protected int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "P").WithArguments("E.extension(int).P").WithLocation(6, 23),
+            // (7,35): error CS9302: 'E.extension(int).P2.get': new protected member declared in an extension block
+            //         public int P2 { protected get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "get").WithArguments("E.extension(int).P2.get").WithLocation(7, 35),
+            // (8,45): error CS9302: 'E.extension(int).P3.set': new protected member declared in an extension block
+            //         public int P3 { get => 0; protected set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "set").WithArguments("E.extension(int).P3.set").WithLocation(8, 45),
+            // (9,23): error CS9302: 'E.extension(int).this[int]': new protected member declared in an extension block
+            //         protected int this[int j] { get => throw null; }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "this").WithArguments("E.extension(int).this[int]").WithLocation(9, 23),
+            // (10,51): error CS9302: 'E.extension(int).this[int, int].get': new protected member declared in an extension block
+            //         public int this[int j, int k] { protected get => throw null; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "get").WithArguments("E.extension(int).this[int, int].get").WithLocation(10, 51));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_ProtectedInternal()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        protected internal void M() { }
+        protected internal int P { get => 0; set { } }
+        public int P2 { protected internal get => 0; set { } }
+        public int P3 { get => 0; protected internal set { } }
+        protected internal int this[int j] { get => throw null; }
+        public int this[int j, int k] { protected internal get => throw null; set { } }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,33): error CS9302: 'E.extension(int).M()': new protected member declared in an extension block
+            //         protected internal void M() { }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "M").WithArguments("E.extension(int).M()").WithLocation(5, 33),
+            // (6,32): error CS9302: 'E.extension(int).P': new protected member declared in an extension block
+            //         protected internal int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "P").WithArguments("E.extension(int).P").WithLocation(6, 32),
+            // (7,44): error CS9302: 'E.extension(int).P2.get': new protected member declared in an extension block
+            //         public int P2 { protected internal get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "get").WithArguments("E.extension(int).P2.get").WithLocation(7, 44),
+            // (8,54): error CS9302: 'E.extension(int).P3.set': new protected member declared in an extension block
+            //         public int P3 { get => 0; protected internal set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "set").WithArguments("E.extension(int).P3.set").WithLocation(8, 54),
+            // (9,32): error CS9302: 'E.extension(int).this[int]': new protected member declared in an extension block
+            //         protected internal int this[int j] { get => throw null; }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "this").WithArguments("E.extension(int).this[int]").WithLocation(9, 32),
+            // (10,60): error CS9302: 'E.extension(int).this[int, int].get': new protected member declared in an extension block
+            //         public int this[int j, int k] { protected internal get => throw null; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "get").WithArguments("E.extension(int).this[int, int].get").WithLocation(10, 60));
+    }
+
+    [Fact]
+    public void Validation_Modifiers_PrivateProtected()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        private protected void M() { }
+        private protected int P { get => 0; set { } }
+        public int P2 { private protected get => 0; set { } }
+        public int P3 { get => 0; private protected set { } }
+        private protected int this[int j] { get => throw null; }
+        public int this[int j, int k] { private protected get => throw null; set { } }
+    }
+}
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,32): error CS9302: 'E.extension(int).M()': new protected member declared in an extension block
+            //         private protected void M() { }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "M").WithArguments("E.extension(int).M()").WithLocation(5, 32),
+            // (6,31): error CS9302: 'E.extension(int).P': new protected member declared in an extension block
+            //         private protected int P { get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "P").WithArguments("E.extension(int).P").WithLocation(6, 31),
+            // (7,43): error CS9302: 'E.extension(int).P2.get': new protected member declared in an extension block
+            //         public int P2 { private protected get => 0; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "get").WithArguments("E.extension(int).P2.get").WithLocation(7, 43),
+            // (8,53): error CS9302: 'E.extension(int).P3.set': new protected member declared in an extension block
+            //         public int P3 { get => 0; private protected set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "set").WithArguments("E.extension(int).P3.set").WithLocation(8, 53),
+            // (9,31): error CS9302: 'E.extension(int).this[int]': new protected member declared in an extension block
+            //         private protected int this[int j] { get => throw null; }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "this").WithArguments("E.extension(int).this[int]").WithLocation(9, 31),
+            // (10,59): error CS9302: 'E.extension(int).this[int, int].get': new protected member declared in an extension block
+            //         public int this[int j, int k] { private protected get => throw null; set { } }
+            Diagnostic(ErrorCode.ERR_ProtectedInExtension, "get").WithArguments("E.extension(int).this[int, int].get").WithLocation(10, 59));
+    }
+
+    [Fact]
+    public void Validation_EntryPoint_01()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public static void Main() { System.Console.Write("ran"); }
+    }
+}
+""";
+        var comp = CreateCompilation(source, options: TestOptions.DebugExe);
+        comp.VerifyEmitDiagnostics();
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130
+        // FindEntryPoint/NameSymbolSearcher skip "E" since it has not declaration named "Main"
+        // CompileAndVerify(comp, expectedOutput: "ran");
+
+        comp = CreateCompilation(source, options: TestOptions.ReleaseExe.WithMainTypeName("E"));
+        comp.VerifyEmitDiagnostics();
+        CompileAndVerify(comp, expectedOutput: "ran").VerifyDiagnostics();
+    }
+
+    [Fact]
+    public void Validation_EntryPoint_03()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public static void Main() { System.Console.Write("ran"); }
+    }
+}
+""";
+        var comp = CreateCompilation(source, options: TestOptions.ReleaseExe.WithMainTypeName("E.<>E__0"));
+        comp.VerifyEmitDiagnostics(
+            // error CS1555: Could not find 'E.<>E__0' specified for Main method
+            Diagnostic(ErrorCode.ERR_MainClassNotFound).WithArguments("E.<>E__0").WithLocation(1, 1));
+    }
+
+    [Fact]
+    public void Validation_EntryPoint_04()
+    {
+        string source = """
+static class E
+{
+    extension(int i)
+    {
+        public static void Main() { }
+    }
+}
+""";
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130
+        // FindEntryPoint should not attempt to find types with an empty name
+        var comp = CreateCompilation(source, options: TestOptions.ReleaseExe.WithMainTypeName("E."));
+        comp.VerifyEmitDiagnostics(
+            // (3,5): error CS1556: 'E.extension(int)' specified for Main method must be a non-generic class, record, struct, or interface
+            //     extension(int i)
+            Diagnostic(ErrorCode.ERR_MainClassNotClass, "extension").WithArguments("E.extension(int)").WithLocation(3, 5));
+    }
+
+    [Fact]
+    public void ReservedTypeName_01()
+    {
+        string source = """
+using extension = int;
+class extension { }
+class C<extension> { }
+""";
+
+        var comp = CreateCompilation(source, parseOptions: TestOptions.Regular13);
+        comp.VerifyEmitDiagnostics(
+            // (1,1): hidden CS8019: Unnecessary using directive.
+            // using extension = int;
+            Diagnostic(ErrorCode.HDN_UnusedUsingDirective, "using extension = int;").WithLocation(1, 1),
+            // (1,7): warning CS8981: The type name 'extension' only contains lower-cased ascii characters. Such names may become reserved for the language.
+            // using extension = int;
+            Diagnostic(ErrorCode.WRN_LowerCaseTypeName, "extension").WithArguments("extension").WithLocation(1, 7),
+            // (2,7): warning CS8981: The type name 'extension' only contains lower-cased ascii characters. Such names may become reserved for the language.
+            // class extension { }
+            Diagnostic(ErrorCode.WRN_LowerCaseTypeName, "extension").WithArguments("extension").WithLocation(2, 7),
+            // (3,9): warning CS8981: The type name 'extension' only contains lower-cased ascii characters. Such names may become reserved for the language.
+            // class C<extension> { }
+            Diagnostic(ErrorCode.WRN_LowerCaseTypeName, "extension").WithArguments("extension").WithLocation(3, 9));
+
+        comp = CreateCompilation(source, parseOptions: TestOptions.RegularNext);
+        comp.VerifyEmitDiagnostics(
+            // (1,7): error CS9306: Types and aliases cannot be named 'extension'.
+            // using extension = int;
+            Diagnostic(ErrorCode.ERR_ExtensionTypeNameDisallowed, "extension").WithLocation(1, 7),
+            // (2,7): error CS9306: Types and aliases cannot be named 'extension'.
+            // class extension { }
+            Diagnostic(ErrorCode.ERR_ExtensionTypeNameDisallowed, "extension").WithLocation(2, 7),
+            // (3,9): error CS9306: Types and aliases cannot be named 'extension'.
+            // class C<extension> { }
+            Diagnostic(ErrorCode.ERR_ExtensionTypeNameDisallowed, "extension").WithLocation(3, 9));
+
+        comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (1,7): error CS9306: Types and aliases cannot be named 'extension'.
+            // using extension = int;
+            Diagnostic(ErrorCode.ERR_ExtensionTypeNameDisallowed, "extension").WithLocation(1, 7),
+            // (2,7): error CS9306: Types and aliases cannot be named 'extension'.
+            // class extension { }
+            Diagnostic(ErrorCode.ERR_ExtensionTypeNameDisallowed, "extension").WithLocation(2, 7),
+            // (3,9): error CS9306: Types and aliases cannot be named 'extension'.
+            // class C<extension> { }
+            Diagnostic(ErrorCode.ERR_ExtensionTypeNameDisallowed, "extension").WithLocation(3, 9));
+    }
+
+    [Fact]
+    public void ReservedTypeName_02()
+    {
+        string source = """
+using @extension = int;
+class @extension { }
+class C<@extension> { }
+""";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (1,1): hidden CS8019: Unnecessary using directive.
+            // using @extension = int;
+            Diagnostic(ErrorCode.HDN_UnusedUsingDirective, "using @extension = int;").WithLocation(1, 1));
+    }
+
+    [Fact]
+    public void CallerAttribute_01()
+    {
+        var src = """
+"".M();
+
+static class E
+{
+    extension([System.Runtime.CompilerServices.CallerMemberName] string name = "")
+    {
+        public void M() { }
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (5,15): error CS9284: The receiver parameter of an extension cannot have a default value
+            //     extension([System.Runtime.CompilerServices.CallerMemberName] string name = "")
+            Diagnostic(ErrorCode.ERR_ExtensionParameterDisallowsDefaultValue, @"[System.Runtime.CompilerServices.CallerMemberName] string name = """"").WithLocation(5, 15));
+    }
+
+    [Fact]
+    public void ConditionalAttribute_01()
+    {
+        var src = """
+42.M();
+42.M2();
+
+static class E
+{
+    extension(int i)
+    {
+        [System.Diagnostics.Conditional("DEBUG")]
+        public void M() { System.Console.Write("ran "); }
+    }
+
+    [System.Diagnostics.Conditional("DEBUG")]
+    public static void M2(this int i) { System.Console.Write("ran"); }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics();
+        CompileAndVerify(comp, expectedOutput: "");
+
+        src = """
+#define DEBUG
+
+42.M();
+42.M2();
+
+static class E
+{
+    extension(int i)
+    {
+        [System.Diagnostics.Conditional("DEBUG")]
+        public void M() { System.Console.Write("ran "); }
+    }
+
+    [System.Diagnostics.Conditional("DEBUG")]
+    public static void M2(this int i) { System.Console.Write("ran"); }
+}
+""";
+        comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics();
+        CompileAndVerify(comp, expectedOutput: "ran ran");
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_01()
+    {
+        string source = """
+class C
+{
+    ref int M2()
+    {
+        int i = 0;
+        return ref i.M();
+    }
+
+    ref int M3()
+    {
+        int i = 0;
+        return ref E.M(ref i);
+    }
+}
+
+static class E
+{
+    extension(ref int i)
+    {
+        public ref int M() => ref i;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (6,20): error CS8168: Cannot return local 'i' by reference because it is not a ref local
+            //         return ref i.M();
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "i").WithArguments("i").WithLocation(6, 20),
+            // (6,20): error CS8347: Cannot use a result of 'E.extension(ref int).M()' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref i.M();
+            Diagnostic(ErrorCode.ERR_EscapeCall, "i.M()").WithArguments("E.extension(ref int).M()", "i").WithLocation(6, 20),
+            // (12,20): error CS8347: Cannot use a result of 'E.M(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref E.M(ref i);
+            Diagnostic(ErrorCode.ERR_EscapeCall, "E.M(ref i)").WithArguments("E.M(ref int)", "i").WithLocation(12, 20),
+            // (12,28): error CS8168: Cannot return local 'i' by reference because it is not a ref local
+            //         return ref E.M(ref i);
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "i").WithArguments("i").WithLocation(12, 28));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_02()
+    {
+        string source = """
+class C
+{
+    ref int M2()
+    {
+        int i = 0;
+        ref int ri = ref i;
+        return ref ri.M();
+    }
+
+    ref int M3()
+    {
+        int i = 0;
+        ref int ri = ref i;
+        return ref E.M(ref ri);
+    }
+}
+
+static class E
+{
+    extension(ref int i)
+    {
+        public ref int M() => ref i;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (7,20): error CS8157: Cannot return 'ri' by reference because it was initialized to a value that cannot be returned by reference
+            //         return ref ri.M();
+            Diagnostic(ErrorCode.ERR_RefReturnNonreturnableLocal, "ri").WithArguments("ri").WithLocation(7, 20),
+            // (7,20): error CS8347: Cannot use a result of 'E.extension(ref int).M()' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref ri.M();
+            Diagnostic(ErrorCode.ERR_EscapeCall, "ri.M()").WithArguments("E.extension(ref int).M()", "i").WithLocation(7, 20),
+            // (14,20): error CS8347: Cannot use a result of 'E.M(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref E.M(ref ri);
+            Diagnostic(ErrorCode.ERR_EscapeCall, "E.M(ref ri)").WithArguments("E.M(ref int)", "i").WithLocation(14, 20),
+            // (14,28): error CS8157: Cannot return 'ri' by reference because it was initialized to a value that cannot be returned by reference
+            //         return ref E.M(ref ri);
+            Diagnostic(ErrorCode.ERR_RefReturnNonreturnableLocal, "ri").WithArguments("ri").WithLocation(14, 28));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_03()
+    {
+        string source = """
+class C
+{
+    RS MA(RS rs) => rs.M1();
+    RS MB(RS rs) => E.M1(rs);
+
+    ref RS MC(ref RS rs) => ref rs.M2();
+    ref RS MD(ref RS rs) => ref E.M2(ref rs);
+}
+
+static class E
+{
+    extension(RS rs)
+    {
+        public RS M1() => rs;
+    }
+    extension(ref RS rs)
+    {
+        public ref RS M2() => ref rs;
+    }
+}
+
+ref struct RS { }
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_04()
+    {
+        string source = """
+class C
+{
+    ref int MA(ref int a)
+    {
+        int b = 42;
+        return ref a.M(ref b); // 1
+    }
+    ref int MB(ref int a)
+    {
+        int b = 42;
+        return ref b.M(ref a); // 2
+    }
+    ref int MC(ref int a)
+    {
+        int b = 42;
+        return ref E.M(ref a, ref b); // 3
+    }
+}
+
+static class E
+{
+    extension(ref int i)
+    {
+        public ref int M(ref int j) => throw null;
+    }
+}
+
+ref struct RS { }
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (6,20): error CS8347: Cannot use a result of 'E.extension(ref int).M(ref int)' in this context because it may expose variables referenced by parameter 'j' outside of their declaration scope
+            //         return ref a.M(ref b); // 1
+            Diagnostic(ErrorCode.ERR_EscapeCall, "a.M(ref b)").WithArguments("E.extension(ref int).M(ref int)", "j").WithLocation(6, 20),
+            // (6,28): error CS8168: Cannot return local 'b' by reference because it is not a ref local
+            //         return ref a.M(ref b); // 1
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "b").WithArguments("b").WithLocation(6, 28),
+            // (11,20): error CS8168: Cannot return local 'b' by reference because it is not a ref local
+            //         return ref b.M(ref a); // 2
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "b").WithArguments("b").WithLocation(11, 20),
+            // (11,20): error CS8347: Cannot use a result of 'E.extension(ref int).M(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref b.M(ref a); // 2
+            Diagnostic(ErrorCode.ERR_EscapeCall, "b.M(ref a)").WithArguments("E.extension(ref int).M(ref int)", "i").WithLocation(11, 20),
+            // (16,20): error CS8347: Cannot use a result of 'E.M(ref int, ref int)' in this context because it may expose variables referenced by parameter 'j' outside of their declaration scope
+            //         return ref E.M(ref a, ref b); // 3
+            Diagnostic(ErrorCode.ERR_EscapeCall, "E.M(ref a, ref b)").WithArguments("E.M(ref int, ref int)", "j").WithLocation(16, 20),
+            // (16,35): error CS8168: Cannot return local 'b' by reference because it is not a ref local
+            //         return ref E.M(ref a, ref b); // 3
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "b").WithArguments("b").WithLocation(16, 35));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_05()
+    {
+        var text = """
+class Program
+{
+    void Test1()
+    {
+        S1 rOuter = default;
+
+        System.Span<int> inner = stackalloc int[1];
+        S1 rInner = MayWrap(ref inner);
+
+        rOuter.MayAssign(ref rOuter);
+        rInner.MayAssign(ref rInner);
+
+        rOuter.MayAssign(ref rInner); // 1
+        rInner.MayAssign(ref rOuter); // 2
+        rInner.MayAssign(arg2: ref rOuter); // 3
+    }
+
+    static S1 MayWrap(ref System.Span<int> arg) => default;
+}
+
+ref struct S1 { }
+
+static class E
+{
+    extension(ref S1 arg1)
+    {
+        public void MayAssign(ref S1 arg2) { arg1 = arg2; }
+    }
+}
+""";
+        var comp = CreateCompilation(text, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (13,30): error CS8352: Cannot use variable 'rInner' in this context because it may expose referenced variables outside of their declaration scope
+            //         rOuter.MayAssign(ref rInner); // 1
+            Diagnostic(ErrorCode.ERR_EscapeVariable, "rInner").WithArguments("rInner").WithLocation(13, 30),
+            // (13,9): error CS8350: This combination of arguments to 'E.extension(ref S1).MayAssign(ref S1)' is disallowed because it may expose variables referenced by parameter 'arg2' outside of their declaration scope
+            //         rOuter.MayAssign(ref rInner); // 1
+            Diagnostic(ErrorCode.ERR_CallArgMixing, "rOuter.MayAssign(ref rInner)").WithArguments("E.extension(ref S1).MayAssign(ref S1)", "arg2").WithLocation(13, 9),
+            // (14,9): error CS8352: Cannot use variable 'rInner' in this context because it may expose referenced variables outside of their declaration scope
+            //         rInner.MayAssign(ref rOuter); // 2
+            Diagnostic(ErrorCode.ERR_EscapeVariable, "rInner").WithArguments("rInner").WithLocation(14, 9),
+            // (14,9): error CS8350: This combination of arguments to 'E.extension(ref S1).MayAssign(ref S1)' is disallowed because it may expose variables referenced by parameter 'arg1' outside of their declaration scope
+            //         rInner.MayAssign(ref rOuter); // 2
+            Diagnostic(ErrorCode.ERR_CallArgMixing, "rInner.MayAssign(ref rOuter)").WithArguments("E.extension(ref S1).MayAssign(ref S1)", "arg1").WithLocation(14, 9),
+            // (15,9): error CS8352: Cannot use variable 'rInner' in this context because it may expose referenced variables outside of their declaration scope
+            //         rInner.MayAssign(arg2: ref rOuter); // 3
+            Diagnostic(ErrorCode.ERR_EscapeVariable, "rInner").WithArguments("rInner").WithLocation(15, 9),
+            // (15,9): error CS8350: This combination of arguments to 'E.extension(ref S1).MayAssign(ref S1)' is disallowed because it may expose variables referenced by parameter 'arg1' outside of their declaration scope
+            //         rInner.MayAssign(arg2: ref rOuter); // 3
+            Diagnostic(ErrorCode.ERR_CallArgMixing, "rInner.MayAssign(arg2: ref rOuter)").WithArguments("E.extension(ref S1).MayAssign(ref S1)", "arg1").WithLocation(15, 9));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_05_Static()
+    {
+        var text = """
+class Program
+{
+    void Test1()
+    {
+        System.Span<int> inner = stackalloc int[1];
+        S1 rInner = MayWrap(ref inner);
+
+        S1.MayAssign(ref rInner);
+    }
+
+    static S1 MayWrap(ref System.Span<int> arg) => default;
+}
+
+ref struct S1 { }
+
+static class E
+{
+    extension(ref S1 arg1)
+    {
+        public static void MayAssign(ref S1 arg2) { }
+    }
+}
+""";
+        var comp = CreateCompilation(text, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_06()
+    {
+        string source = """
+class C
+{
+    void M2(ref int j)
+    {
+        int i = 0;
+        j = ref i.M();
+    }
+
+    void M3(ref int j)
+    {
+        int i = 0;
+        j = ref E.M(ref i);
+    }
+}
+
+static class E
+{
+    extension(ref int i)
+    {
+        public ref int M() => ref i;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (6,9): error CS8374: Cannot ref-assign 'i.M()' to 'j' because 'i.M()' has a narrower escape scope than 'j'.
+            //         j = ref i.M();
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref i.M()").WithArguments("j", "i.M()").WithLocation(6, 9),
+            // (12,9): error CS8374: Cannot ref-assign 'E.M(ref i)' to 'j' because 'E.M(ref i)' has a narrower escape scope than 'j'.
+            //         j = ref E.M(ref i);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref E.M(ref i)").WithArguments("j", "E.M(ref i)").WithLocation(12, 9));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_07()
+    {
+        string source = """
+class C
+{
+    void MA(ref readonly int j)
+    {
+        int i = 0;
+        j = ref i.M();
+        j = ref E.M(ref i);
+        j = ref i.M2();
+    }
+}
+
+static class E
+{
+    extension(ref readonly int i)
+    {
+        public ref readonly int M() => ref i;
+    }
+    public static ref readonly int M2(this ref readonly int i) => ref i;
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (6,9): error CS8374: Cannot ref-assign 'i.M()' to 'j' because 'i.M()' has a narrower escape scope than 'j'.
+            //         j = ref i.M();
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref i.M()").WithArguments("j", "i.M()").WithLocation(6, 9),
+            // (7,9): error CS8374: Cannot ref-assign 'E.M(ref i)' to 'j' because 'E.M(ref i)' has a narrower escape scope than 'j'.
+            //         j = ref E.M(ref i);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref E.M(ref i)").WithArguments("j", "E.M(ref i)").WithLocation(7, 9),
+            // (8,9): error CS8374: Cannot ref-assign 'i.M2()' to 'j' because 'i.M2()' has a narrower escape scope than 'j'.
+            //         j = ref i.M2();
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref i.M2()").WithArguments("j", "i.M2()").WithLocation(8, 9));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_08()
+    {
+        string source = """
+class C
+{
+    void MA(ref readonly int j, ref int k)
+    {
+        int i = 0;
+        j = ref i.M(ref k);
+        j = ref E.M(ref i, ref k);
+        j = ref i.M2(ref k);
+    }
+}
+
+static class E
+{
+    extension(ref readonly int i)
+    {
+        public ref readonly int M(ref int k) => ref i;
+    }
+    public static ref readonly int M2(this ref readonly int i, ref int k) => ref i;
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (6,9): error CS8374: Cannot ref-assign 'i.M(ref k)' to 'j' because 'i.M(ref k)' has a narrower escape scope than 'j'.
+            //         j = ref i.M(ref k);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref i.M(ref k)").WithArguments("j", "i.M(ref k)").WithLocation(6, 9),
+            // (7,9): error CS8374: Cannot ref-assign 'E.M(ref i, ref k)' to 'j' because 'E.M(ref i, ref k)' has a narrower escape scope than 'j'.
+            //         j = ref E.M(ref i, ref k);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref E.M(ref i, ref k)").WithArguments("j", "E.M(ref i, ref k)").WithLocation(7, 9),
+            // (8,9): error CS8374: Cannot ref-assign 'i.M2(ref k)' to 'j' because 'i.M2(ref k)' has a narrower escape scope than 'j'.
+            //         j = ref i.M2(ref k);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref i.M2(ref k)").WithArguments("j", "i.M2(ref k)").WithLocation(8, 9));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_09()
+    {
+        string source = """
+class C
+{
+    void MA(ref int j, ref int k)
+    {
+        int i = 0;
+        j = ref i.M(ref k);
+        j = ref E.M(ref i, ref k);
+        j = ref i.M2(ref k);
+    }
+}
+
+static class E
+{
+    extension(ref int i)
+    {
+        public ref int M(ref int k) => ref i;
+    }
+    public static ref int M2(this ref int i, ref int k) => ref i;
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (6,9): error CS8374: Cannot ref-assign 'i.M(ref k)' to 'j' because 'i.M(ref k)' has a narrower escape scope than 'j'.
+            //         j = ref i.M(ref k);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref i.M(ref k)").WithArguments("j", "i.M(ref k)").WithLocation(6, 9),
+            // (7,9): error CS8374: Cannot ref-assign 'E.M(ref i, ref k)' to 'j' because 'E.M(ref i, ref k)' has a narrower escape scope than 'j'.
+            //         j = ref E.M(ref i, ref k);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref E.M(ref i, ref k)").WithArguments("j", "E.M(ref i, ref k)").WithLocation(7, 9),
+            // (8,9): error CS8374: Cannot ref-assign 'i.M2(ref k)' to 'j' because 'i.M2(ref k)' has a narrower escape scope than 'j'.
+            //         j = ref i.M2(ref k);
+            Diagnostic(ErrorCode.ERR_RefAssignNarrower, "j = ref i.M2(ref k)").WithArguments("j", "i.M2(ref k)").WithLocation(8, 9));
+    }
+
+    [Fact]
+    public void RefAnalysis_Invocation_10()
+    {
+        var source = """
+class Program
+{
+    static ref int G8A()
+    {
+        int t = default;
+        int u = default;
+        return ref t.F8(out u); // 1
+    }
+    static ref int G8A_2()
+    {
+        int t = default;
+        int u = default;
+        return ref E.F8(t, out u); // 2
+    }
+    static ref int G8A_3()
+    {
+        int t = default;
+        int u = default;
+        return ref E.F8(in t, out u); // 3
+    }
+}
+static class E
+{
+    extension(in int t)
+    {
+        public ref int F8(out int u) => throw null;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (7,20): error CS8168: Cannot return local 't' by reference because it is not a ref local
+            //         return ref t.F8(out u); // 1
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "t").WithArguments("t").WithLocation(7, 20),
+            // (7,20): error CS8347: Cannot use a result of 'E.extension(in int).F8(out int)' in this context because it may expose variables referenced by parameter 't' outside of their declaration scope
+            //         return ref t.F8(out u); // 1
+            Diagnostic(ErrorCode.ERR_EscapeCall, "t.F8(out u)").WithArguments("E.extension(in int).F8(out int)", "t").WithLocation(7, 20),
+            // (13,20): error CS8347: Cannot use a result of 'E.F8(in int, out int)' in this context because it may expose variables referenced by parameter 't' outside of their declaration scope
+            //         return ref E.F8(t, out u); // 2
+            Diagnostic(ErrorCode.ERR_EscapeCall, "E.F8(t, out u)").WithArguments("E.F8(in int, out int)", "t").WithLocation(13, 20),
+            // (13,25): error CS8168: Cannot return local 't' by reference because it is not a ref local
+            //         return ref E.F8(t, out u); // 2
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "t").WithArguments("t").WithLocation(13, 25),
+            // (19,20): error CS8347: Cannot use a result of 'E.F8(in int, out int)' in this context because it may expose variables referenced by parameter 't' outside of their declaration scope
+            //         return ref E.F8(in t, out u); // 3
+            Diagnostic(ErrorCode.ERR_EscapeCall, "E.F8(in t, out u)").WithArguments("E.F8(in int, out int)", "t").WithLocation(19, 20),
+            // (19,28): error CS8168: Cannot return local 't' by reference because it is not a ref local
+            //         return ref E.F8(in t, out u); // 3
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "t").WithArguments("t").WithLocation(19, 28));
+    }
+
+    [Fact]
+    public void RefAnalysis_PropertyAccess_01()
+    {
+        string source = """
+class C
+{
+    ref int M2()
+    {
+        int i = 0;
+        return ref i.P;
+    }
+
+    ref int M3()
+    {
+        int i = 0;
+        return ref E.get_P(ref i);
+    }
+}
+
+static class E
+{
+    extension(ref int i)
+    {
+        public ref int P => ref i;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (6,20): error CS8168: Cannot return local 'i' by reference because it is not a ref local
+            //         return ref i.P;
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "i").WithArguments("i").WithLocation(6, 20),
+            // (6,20): error CS8347: Cannot use a result of 'E.extension(ref int).P' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref i.P;
+            Diagnostic(ErrorCode.ERR_EscapeCall, "i.P").WithArguments("E.extension(ref int).P", "i").WithLocation(6, 20),
+            // (12,20): error CS8347: Cannot use a result of 'E.get_P(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref E.get_P(ref i);
+            Diagnostic(ErrorCode.ERR_EscapeCall, "E.get_P(ref i)").WithArguments("E.get_P(ref int)", "i").WithLocation(12, 20),
+            // (12,32): error CS8168: Cannot return local 'i' by reference because it is not a ref local
+            //         return ref E.get_P(ref i);
+            Diagnostic(ErrorCode.ERR_RefReturnLocal, "i").WithArguments("i").WithLocation(12, 32));
+    }
+
+    [Fact]
+    public void RefAnalysis_PropertyAccess_02()
+    {
+        string source = """
+class C
+{
+    ref int M2()
+    {
+        int i = 0;
+        ref int ri = ref i;
+        return ref ri.P;
+    }
+
+    ref int M3()
+    {
+        int i = 0;
+        ref int ri = ref i;
+        return ref E.get_P(ref ri);
+    }
+}
+
+static class E
+{
+    extension(ref int i)
+    {
+        public ref int P => ref i;
+    }
+}
+""";
+
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (7,20): error CS8157: Cannot return 'ri' by reference because it was initialized to a value that cannot be returned by reference
+            //         return ref ri.P;
+            Diagnostic(ErrorCode.ERR_RefReturnNonreturnableLocal, "ri").WithArguments("ri").WithLocation(7, 20),
+            // (7,20): error CS8347: Cannot use a result of 'E.extension(ref int).P' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref ri.P;
+            Diagnostic(ErrorCode.ERR_EscapeCall, "ri.P").WithArguments("E.extension(ref int).P", "i").WithLocation(7, 20),
+            // (14,20): error CS8347: Cannot use a result of 'E.get_P(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+            //         return ref E.get_P(ref ri);
+            Diagnostic(ErrorCode.ERR_EscapeCall, "E.get_P(ref ri)").WithArguments("E.get_P(ref int)", "i").WithLocation(14, 20),
+            // (14,32): error CS8157: Cannot return 'ri' by reference because it was initialized to a value that cannot be returned by reference
+            //         return ref E.get_P(ref ri);
+            Diagnostic(ErrorCode.ERR_RefReturnNonreturnableLocal, "ri").WithArguments("ri").WithLocation(14, 32));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_01()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M();
+
+object? oNotNull = new object();
+oNotNull.M();
+
+static class E
+{
+    extension(object? o)
+    {
+        public void M() { }
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void Nullability_Invocation_02()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M(); // 1
+
+object? oNotNull = new object();
+oNotNull.M();
+
+object? oNull2 = null;
+oNull2!.M();
+
+static class E
+{
+    extension(object o)
+    {
+        public void M() { }
+    }
+}
+""";
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : consider reporting a better containing symbol
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8604: Possible null reference argument for parameter 'o' in 'extension(object)'.
+            // oNull.M(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull").WithArguments("o", "extension(object)").WithLocation(4, 1));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_03()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M().ToString();
+
+object? oNotNull = new object();
+oNotNull.M().ToString();
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public T M() => t;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8602: Dereference of a possibly null reference.
+            // oNull.M().ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "oNull.M()").WithLocation(4, 1));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var invocation1 = GetSyntax<InvocationExpressionSyntax>(tree, "oNull.M()");
+        Assert.Equal("System.Object? E.extension<System.Object?>(System.Object?).M()", model.GetSymbolInfo(invocation1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var invocation2 = GetSyntax<InvocationExpressionSyntax>(tree, "oNotNull.M()");
+        Assert.Equal("System.Object! E.extension<System.Object!>(System.Object!).M()", model.GetSymbolInfo(invocation2).Symbol.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_04()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M().ToString();
+
+object? oNotNull = new object();
+oNotNull.M().ToString();
+
+static class E
+{
+    extension<T>(T t) where T : notnull
+    {
+        public T M() => t;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.extension<T>(T)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // oNull.M().ToString();
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "oNull.M").WithArguments("E.extension<T>(T)", "T", "object?").WithLocation(4, 1),
+            // (4,1): warning CS8602: Dereference of a possibly null reference.
+            // oNull.M().ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "oNull.M()").WithLocation(4, 1));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var invocation1 = GetSyntax<InvocationExpressionSyntax>(tree, "oNull.M()");
+        Assert.Equal("System.Object? E.extension<System.Object?>(System.Object?).M()", model.GetSymbolInfo(invocation1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var invocation2 = GetSyntax<InvocationExpressionSyntax>(tree, "oNotNull.M()");
+        Assert.Equal("System.Object! E.extension<System.Object!>(System.Object!).M()", model.GetSymbolInfo(invocation2).Symbol.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_05()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M(oNull).ToString();
+
+object? oNotNull = new object();
+oNotNull.M(oNotNull).ToString();
+
+static class E
+{
+    extension<T>(T t) where T : notnull
+    {
+        public U M<U>(U u) where U : notnull => u;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8714: The type 'object?' cannot be used as type parameter 'U' in the generic type or method 'E.extension<object?>(object?).M<U>(U)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // oNull.M(oNull).ToString();
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "oNull.M").WithArguments("E.extension<object?>(object?).M<U>(U)", "U", "object?").WithLocation(4, 1),
+            // (4,1): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.extension<T>(T)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // oNull.M(oNull).ToString();
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "oNull.M").WithArguments("E.extension<T>(T)", "T", "object?").WithLocation(4, 1),
+            // (4,1): warning CS8602: Dereference of a possibly null reference.
+            // oNull.M(oNull).ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "oNull.M(oNull)").WithLocation(4, 1));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var invocation1 = GetSyntax<InvocationExpressionSyntax>(tree, "oNull.M(oNull)");
+        Assert.Equal("System.Object? E.extension<System.Object?>(System.Object?).M<System.Object?>(System.Object? u)", model.GetSymbolInfo(invocation1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var invocation2 = GetSyntax<InvocationExpressionSyntax>(tree, "oNotNull.M(oNotNull)");
+        Assert.Equal("System.Object! E.extension<System.Object!>(System.Object!).M<System.Object!>(System.Object! u)", model.GetSymbolInfo(invocation2).Symbol.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_06()
+    {
+        var src = """
+#nullable enable
+
+Derived1.M().ToString();
+Derived2.M().ToString();
+
+static class E
+{
+    extension<T>(C<T> t) where T : notnull
+    {
+        public static T M() => throw null!;
+    }
+}
+
+class Derived1 : C<object?> { }
+class Derived2 : C<object> { }
+class C<T> { }
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,1): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.extension<T>(C<T>)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // Derived1.M().ToString();
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "Derived1.M").WithArguments("E.extension<T>(C<T>)", "T", "object?").WithLocation(3, 1),
+            // (3,1): warning CS8602: Dereference of a possibly null reference.
+            // Derived1.M().ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "Derived1.M()").WithLocation(3, 1));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var invocation1 = GetSyntax<InvocationExpressionSyntax>(tree, "Derived1.M()");
+        Assert.Equal("System.Object? E.extension<System.Object?>(C<System.Object?>!).M()", model.GetSymbolInfo(invocation1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var invocation2 = GetSyntax<InvocationExpressionSyntax>(tree, "Derived2.M()");
+        Assert.Equal("System.Object! E.extension<System.Object!>(C<System.Object!>!).M()", model.GetSymbolInfo(invocation2).Symbol.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_07()
+    {
+        var src = """
+#nullable enable
+
+object.M<object>(42);
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public static void M() => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,8): error CS1501: No overload for method 'M' takes 1 arguments
+            // object.M<object>(42);
+            Diagnostic(ErrorCode.ERR_BadArgCount, "M<object>").WithArguments("M", "1").WithLocation(3, 8));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_08()
+    {
+        var src = """
+#nullable enable
+
+object? o = new object();
+
+object? oNull1 = null;
+o.M(oNull1);
+
+object? oNotNull = new object();
+o.M(oNotNull);
+
+object? oNull2 = null;
+o.M(oNull2!);
+
+object? oNull3 = null;
+object.M2(oNull3);
+
+object.M2(oNotNull);
+
+object? oNull4 = null;
+object.M2(oNull4!);
+
+static class E
+{
+    extension(object o1)
+    {
+        public void M(object o2) { }
+        public static void M2(object o2) { }
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (6,5): warning CS8604: Possible null reference argument for parameter 'o2' in 'void extension(object).M(object o2)'.
+            // o.M(oNull1);
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull1").WithArguments("o2", "void extension(object).M(object o2)").WithLocation(6, 5),
+            // (15,11): warning CS8604: Possible null reference argument for parameter 'o2' in 'void extension(object).M2(object o2)'.
+            // object.M2(oNull3);
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull3").WithArguments("o2", "void extension(object).M2(object o2)").WithLocation(15, 11));
+    }
+
+    [Fact]
+    public void Nullability_Invocation_09()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+object? oNotNull = new object();
+
+oNull.M().M().ToString();
+oNotNull.M().M().ToString();
+
+object.M2().M().ToString();
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public T M() => throw null!;
+        public static T M2() => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (6,1): warning CS8602: Dereference of a possibly null reference.
+            // oNull.M().M().ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "oNull.M().M()").WithLocation(6, 1));
+    }
+
+    [Fact]
+    public void Nullability_MethodGroup_01()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+var x = oNull.M;
+
+object? oNotNull = new object();
+var y = oNotNull.M;
+
+object? oNull2 = null;
+var z = oNull2!.M;
+
+static class E
+{
+    extension(object? o)
+    {
+        public void M() { }
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics();
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess1 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNull.M");
+        Assert.Equal("void E.extension(System.Object?).M()", model.GetSymbolInfo(memberAccess1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var localDeclaration1 = GetSyntax<VariableDeclarationSyntax>(tree, "var x = oNull.M");
+        Assert.Equal("System.Action?", model.GetTypeInfo(localDeclaration1.Type).Type.ToTestDisplayString());
+
+        var memberAccess2 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNotNull.M");
+        Assert.Equal("void E.extension(System.Object?).M()", model.GetSymbolInfo(memberAccess2).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var localDeclaration2 = GetSyntax<VariableDeclarationSyntax>(tree, "var y = oNotNull.M");
+        Assert.Equal("System.Action?", model.GetTypeInfo(localDeclaration2.Type).Type.ToTestDisplayString());
+    }
+
+    [Fact]
+    public void Nullability_MethodGroup_02()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+var x = oNull.M;
+
+object? oNotNull = new object();
+var y = oNotNull.M;
+
+static class E
+{
+    extension(object o)
+    {
+        public void M() { }
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,9): warning CS8604: Possible null reference argument for parameter 'o' in 'extension(object)'.
+            // var x = oNull.M;
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull").WithArguments("o", "extension(object)").WithLocation(4, 9));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess1 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNull.M");
+        Assert.Equal("void E.extension(System.Object!).M()", model.GetSymbolInfo(memberAccess1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var localDeclaration1 = GetSyntax<VariableDeclarationSyntax>(tree, "var x = oNull.M");
+        Assert.Equal("System.Action?", model.GetTypeInfo(localDeclaration1.Type).Type.ToTestDisplayString());
+
+        var memberAccess2 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNotNull.M");
+        Assert.Equal("void E.extension(System.Object!).M()", model.GetSymbolInfo(memberAccess2).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var localDeclaration2 = GetSyntax<VariableDeclarationSyntax>(tree, "var y = oNotNull.M");
+        Assert.Equal("System.Action?", model.GetTypeInfo(localDeclaration2.Type).Type.ToTestDisplayString());
+    }
+
+    [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/78022")]
+    public void Nullability_MethodGroup_03()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+var x = oNull.M;
+var x2 = oNull.M2;
+
+object? oNull2 = null;
+System.Func<object> x3 = oNull2.M; // 1
+System.Func<object> x4 = oNull2.M2; // 2
+
+object? oNull3 = null;
+_ = new System.Func<object>(oNull3.M); // 3
+_ = new System.Func<object>(oNull3.M2); // 4
+
+object? oNotNull = new object();
+var y = oNotNull.M;
+
+object? oNotNull2 = new object();
+System.Func<object> y2 = oNotNull2.M;
+_ = new System.Func<object>(oNotNull2.M);
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public T M() { return t; }
+    }
+
+    public static T M2<T>(this T t) => t;
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (8,26): warning CS8621: Nullability of reference types in return type of 'object? extension<object?>(object?).M()' doesn't match the target delegate 'Func<object>' (possibly because of nullability attributes).
+            // System.Func<object> x3 = oNull2.M; // 1
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "oNull2.M").WithArguments("object? extension<object?>(object?).M()", "System.Func<object>").WithLocation(8, 26),
+            // (9,26): warning CS8621: Nullability of reference types in return type of 'object? E.M2<object?>(object? t)' doesn't match the target delegate 'Func<object>' (possibly because of nullability attributes).
+            // System.Func<object> x4 = oNull2.M2; // 2
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "oNull2.M2").WithArguments("object? E.M2<object?>(object? t)", "System.Func<object>").WithLocation(9, 26),
+            // (12,29): warning CS8621: Nullability of reference types in return type of 'object? extension<object?>(object?).M()' doesn't match the target delegate 'Func<object>' (possibly because of nullability attributes).
+            // _ = new System.Func<object>(oNull3.M); // 3
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "oNull3.M").WithArguments("object? extension<object?>(object?).M()", "System.Func<object>").WithLocation(12, 29),
+            // (13,29): warning CS8621: Nullability of reference types in return type of 'object? E.M2<object?>(object? t)' doesn't match the target delegate 'Func<object>' (possibly because of nullability attributes).
+            // _ = new System.Func<object>(oNull3.M2); // 4
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "oNull3.M2").WithArguments("object? E.M2<object?>(object? t)", "System.Func<object>").WithLocation(13, 29));
+
+        // Tracked by https://github.com/dotnet/roslyn/issues/78022 : the semantic model is incorrect for re-inferred method group
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        // Should be "System.Object? E.extension<System.Object?>(System.Object?).M()"
+        var memberAccess1 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNull.M");
+        Assert.Equal("System.Object E.extension<System.Object>(System.Object).M()", model.GetSymbolInfo(memberAccess1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Func<System.Object?>?"
+        var varDeclaration1 = GetSyntax<VariableDeclarationSyntax>(tree, "var x = oNull.M");
+        Assert.Equal("System.Func<System.Object>?", model.GetTypeInfo(varDeclaration1.Type).Type.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Object? System.Object?.M2<System.Object?>()"
+        var memberAccess2 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNull.M2");
+        Assert.Equal("System.Object System.Object!.M2<System.Object>()", model.GetSymbolInfo(memberAccess2).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Func<System.Object?>?"
+        var varDeclaration2 = GetSyntax<VariableDeclarationSyntax>(tree, "var x2 = oNull.M2");
+        Assert.Equal("System.Func<System.Object>?", model.GetTypeInfo(varDeclaration2.Type).Type.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Object? E.extension<System.Object?>(System.Object?).M()"
+        var memberAccess3 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNull2.M");
+        Assert.Equal("System.Object E.extension<System.Object>(System.Object).M()", model.GetSymbolInfo(memberAccess3).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Object? System.Object?.M2<System.Object?>()"
+        var memberAccess4 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNull2.M2");
+        Assert.Equal("System.Object System.Object!.M2<System.Object>()", model.GetSymbolInfo(memberAccess4).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Object! E.extension<System.Object!>(System.Object!).M()"
+        var memberAccess5 = GetSyntax<MemberAccessExpressionSyntax>(tree, "oNotNull.M");
+        Assert.Equal("System.Object E.extension<System.Object>(System.Object).M()", model.GetSymbolInfo(memberAccess5).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Func<System.Object!>?"
+        var varDeclaration3 = GetSyntax<VariableDeclarationSyntax>(tree, "var y = oNotNull.M");
+        Assert.Equal("System.Func<System.Object>?", model.GetTypeInfo(varDeclaration3.Type).Type.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_MethodGroup_04()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+System.Func<object, object> x = oNull.M; // 1
+System.Func<object, object> x2 = oNull.M2; // 2
+
+object? oNotNull = new object();
+System.Func<object?, object?> y = oNotNull.M;
+System.Func<object?, object?> y2 = oNotNull.M2;
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public T M(T t2) { return t; }
+    }
+
+    public static T M2<T>(this T t, T t2) => t;
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,33): warning CS8621: Nullability of reference types in return type of 'object? extension<object?>(object?).M(object? t2)' doesn't match the target delegate 'Func<object, object>' (possibly because of nullability attributes).
+            // System.Func<object, object> x = oNull.M; // 1
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "oNull.M").WithArguments("object? extension<object?>(object?).M(object? t2)", "System.Func<object, object>").WithLocation(4, 33),
+            // (5,34): warning CS8621: Nullability of reference types in return type of 'object? E.M2<object?>(object? t, object? t2)' doesn't match the target delegate 'Func<object, object>' (possibly because of nullability attributes).
+            // System.Func<object, object> xx = oNull.M2; // 2
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "oNull.M2").WithArguments("object? E.M2<object?>(object? t, object? t2)", "System.Func<object, object>").WithLocation(5, 34));
+    }
+
+    [Fact]
+    public void Nullability_MethodGroup_05()
+    {
+        var src = """
+#nullable enable
+
+System.Action<object?> x = Derived1.M;
+System.Action<object?> y = Derived2.M;
+
+System.Action<object?> z = Derived1.M2;
+System.Action<object?> t = Derived2.M2;
+_ = new System.Action<object?>(Derived2.M2);
+
+static class E
+{
+    extension<T>(C<T> t)
+    {
+        public static void M(T t2) => throw null!;
+        public static void M2(object t2) => throw null!;
+    }
+}
+
+class Derived1 : C<object?> { }
+class Derived2 : C<object> { }
+class C<T> { }
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (6,28): warning CS8622: Nullability of reference types in type of parameter 't2' of 'void extension<object?>(C<object?>).M2(object t2)' doesn't match the target delegate 'Action<object?>' (possibly because of nullability attributes).
+            // System.Action<object?> z = Derived1.M2;
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInParameterTypeOfTargetDelegate, "Derived1.M2").WithArguments("t2", "void extension<object?>(C<object?>).M2(object t2)", "System.Action<object?>").WithLocation(6, 28),
+            // (7,28): warning CS8622: Nullability of reference types in type of parameter 't2' of 'void extension<object>(C<object>).M2(object t2)' doesn't match the target delegate 'Action<object?>' (possibly because of nullability attributes).
+            // System.Action<object?> t = Derived2.M2;
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInParameterTypeOfTargetDelegate, "Derived2.M2").WithArguments("t2", "void extension<object>(C<object>).M2(object t2)", "System.Action<object?>").WithLocation(7, 28),
+            // (8,32): warning CS8622: Nullability of reference types in type of parameter 't2' of 'void extension<object>(C<object>).M2(object t2)' doesn't match the target delegate 'Action<object?>' (possibly because of nullability attributes).
+            // _ = new System.Action<object?>(Derived2.M2);
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInParameterTypeOfTargetDelegate, "Derived2.M2").WithArguments("t2", "void extension<object>(C<object>).M2(object t2)", "System.Action<object?>").WithLocation(8, 32));
+    }
+
+    [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/78022")]
+    public void Nullability_MethodGroup_06()
+    {
+        var src = """
+#nullable enable
+
+var x = Derived1.M;
+x().ToString();
+
+var y = Derived2.M;
+y().ToString();
+
+static class E
+{
+    extension<T>(C<T> t)
+    {
+        public static T M() => throw null!;
+    }
+}
+
+class Derived1 : C<object?> { }
+class Derived2 : C<object> { }
+class C<T> { }
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics();
+
+        // Tracked by https://github.com/dotnet/roslyn/issues/78022 : the semantic model is incorrect for re-inferred method group
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var invocation1 = GetSyntax<MemberAccessExpressionSyntax>(tree, "Derived1.M");
+        // Should be "System.Object? E.extension<System.Object?>(C<System.Object?>!).M()"
+        Assert.Equal("System.Object E.extension<System.Object>(C<System.Object>!).M()", model.GetSymbolInfo(invocation1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Func<System.Object?>?"
+        var localDeclaration1 = GetSyntax<VariableDeclarationSyntax>(tree, "var x = Derived1.M");
+        Assert.Equal("System.Func<System.Object>?", model.GetTypeInfo(localDeclaration1.Type).Type.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Object! E.extension<System.Object!>(C<System.Object!>!).M()"
+        var invocation2 = GetSyntax<MemberAccessExpressionSyntax>(tree, "Derived2.M");
+        Assert.Equal("System.Object E.extension<System.Object>(C<System.Object>!).M()", model.GetSymbolInfo(invocation2).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Func<System.Object!>?"
+        var localDeclaration2 = GetSyntax<VariableDeclarationSyntax>(tree, "var x = Derived1.M");
+        Assert.Equal("System.Func<System.Object>?", model.GetTypeInfo(localDeclaration2.Type).Type.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/78022")]
+    public void Nullability_MethodGroup_07()
+    {
+        var src = """
+#nullable enable
+
+System.Func<object> x = Derived1.M; // 1
+System.Func<object> y = Derived2.M;
+
+static class E
+{
+    extension<T>(C<T> t)
+    {
+        public static T M() => throw null!;
+    }
+}
+
+class Derived1 : C<object?> { }
+class Derived2 : C<object> { }
+class C<T> { }
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,25): warning CS8621: Nullability of reference types in return type of 'object? extension<object?>(C<object?>).M()' doesn't match the target delegate 'Func<object>' (possibly because of nullability attributes).
+            // System.Func<object> x = Derived1.M; // 1
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "Derived1.M").WithArguments("object? extension<object?>(C<object?>).M()", "System.Func<object>").WithLocation(3, 25));
+
+        // Tracked by https://github.com/dotnet/roslyn/issues/78022 : the semantic model is incorrect for re-inferred method group
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var memberAccess1 = GetSyntax<MemberAccessExpressionSyntax>(tree, "Derived1.M");
+        // Should be "System.Object? E.extension<System.Object?>(C<System.Object?>!).M()"
+        Assert.Equal("System.Object E.extension<System.Object>(C<System.Object>!).M()", model.GetSymbolInfo(memberAccess1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var memberAccess2 = GetSyntax<MemberAccessExpressionSyntax>(tree, "Derived2.M");
+        // Should be "System.Object! E.extension<System.Object!>(C<System.Object!>!).M()"
+        Assert.Equal("System.Object E.extension<System.Object>(C<System.Object>!).M()", model.GetSymbolInfo(memberAccess2).Symbol.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_MethodGroup_08()
+    {
+        var src = """
+#nullable enable
+
+var x = Derived1.M;
+var y = Derived2.M;
+
+var z = new Derived1().M2;
+
+static class E
+{
+    extension<T>(C<T> t) where T : notnull
+    {
+        public static T M() => throw null!;
+    }
+
+    public static T M2<T>(this C<T> t) where T : notnull => throw null!;
+}
+
+class Derived1 : C<object?> { }
+class Derived2 : C<object> { }
+class C<T> { }
+""";
+        // Tracked by https://github.com/dotnet/roslyn/issues/78022 : the analysis is incorrect for re-inferred method group
+        // The warnings about return types are wrong
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (3,9): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.extension<T>(C<T>)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // var x = Derived1.M;
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "Derived1.M").WithArguments("E.extension<T>(C<T>)", "T", "object?").WithLocation(3, 9),
+            // (3,9): warning CS8621: Nullability of reference types in return type of 'object? extension<object?>(C<object?>).M()' doesn't match the target delegate 'Func<object>' (possibly because of nullability attributes).
+            // var x = Derived1.M;
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "Derived1.M").WithArguments("object? extension<object?>(C<object?>).M()", "System.Func<object>").WithLocation(3, 9),
+            // (6,9): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.M2<T>(C<T>)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // var z = new Derived1().M2;
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "new Derived1().M2").WithArguments("E.M2<T>(C<T>)", "T", "object?").WithLocation(6, 9),
+            // (6,9): warning CS8621: Nullability of reference types in return type of 'object? E.M2<object?>(C<object?> t)' doesn't match the target delegate 'Func<object>' (possibly because of nullability attributes).
+            // var z = new Derived1().M2;
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInReturnTypeOfTargetDelegate, "new Derived1().M2").WithArguments("object? E.M2<object?>(C<object?> t)", "System.Func<object>").WithLocation(6, 9));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        // Should be "System.Object? E.extension<System.Object?>(C<System.Object?>!).M()"
+        var memberAccess1 = GetSyntax<MemberAccessExpressionSyntax>(tree, "Derived1.M");
+        Assert.Equal("System.Object! E.extension<System.Object>(C<System.Object!>!).M()", model.GetSymbolInfo(memberAccess1).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Func<System.Object?>?"
+        var varDeclaration1 = GetSyntax<VariableDeclarationSyntax>(tree, "var x = Derived1.M");
+        Assert.Equal("System.Func<System.Object!>?", model.GetTypeInfo(varDeclaration1.Type).Type.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "System.Object! E.extension<System.Object!>(C<System.Object!>!).M()"
+        var memberAccess2 = GetSyntax<MemberAccessExpressionSyntax>(tree, "Derived2.M");
+        Assert.Equal("System.Object! E.extension<System.Object>(C<System.Object!>!).M()", model.GetSymbolInfo(memberAccess2).Symbol.ToTestDisplayString(includeNonNullable: true));
+
+        var varDeclaration2 = GetSyntax<VariableDeclarationSyntax>(tree, "var x = Derived1.M");
+        Assert.Equal("System.Func<System.Object!>?", model.GetTypeInfo(varDeclaration2.Type).Type.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/78022")]
+    public void Nullability_Deconstruct_01()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+var (x1, x2) = oNull;
+x1.ToString(); // 1
+
+object oNotNull = new object();
+var (y1, y2) = oNotNull;
+y1.ToString();
+
+var (z1, z2, z3) = oNull;
+z1.ToString(); // 2
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public void Deconstruct(out T t1, out T t2) => throw null!;
+    }
+
+    public static void Deconstruct<T>(this T t, out T t1, out T t2, out T t3) => throw null!;
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (5,1): warning CS8602: Dereference of a possibly null reference.
+            // x1.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x1").WithLocation(5, 1),
+            // (12,1): warning CS8602: Dereference of a possibly null reference.
+            // z1.ToString(); // 2
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "z1").WithLocation(12, 1));
+
+        // Tracked by https://github.com/dotnet/roslyn/issues/78022 : the semantic model is incorrect for re-inferred deconstruction
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var assignment1 = GetSyntax<AssignmentExpressionSyntax>(tree, "var (x1, x2) = oNull");
+        // Should be "void E.extension<System.Object?>(System.Object?).Deconstruct(out System.Object? t1, out System.Object? t2)"
+        Assert.Equal("void E.extension<System.Object>(System.Object).Deconstruct(out System.Object t1, out System.Object t2)",
+            model.GetDeconstructionInfo(assignment1).Method.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "void E.extension<System.Object!>(System.Object!).Deconstruct(out System.Object! t1, out System.Object! t2)"
+        var assignment2 = GetSyntax<AssignmentExpressionSyntax>(tree, "var (y1, y2) = oNotNull");
+        Assert.Equal("void E.extension<System.Object>(System.Object).Deconstruct(out System.Object t1, out System.Object t2)",
+            model.GetDeconstructionInfo(assignment2).Method.ToTestDisplayString(includeNonNullable: true));
+
+        // Should be "void E.Deconstruct<System.Object?>(this System.Object? t, out System.Object? t1, out System.Object? t2, out System.Object? t3)"
+        var assignment3 = GetSyntax<AssignmentExpressionSyntax>(tree, "var (z1, z2, z3) = oNull");
+        Assert.Equal("void E.Deconstruct<System.Object>(this System.Object t, out System.Object t1, out System.Object t2, out System.Object t3)",
+            model.GetDeconstructionInfo(assignment3).Method.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_Deconstruct_02()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+var (x1, x2) = oNull; // 1
+
+object oNotNull = new object();
+var (y1, y2) = oNotNull;
+
+static class E
+{
+    extension(object o)
+    {
+        public void Deconstruct(out int i1, out int i2) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,16): warning CS8604: Possible null reference argument for parameter 'o' in 'extension(object)'.
+            // var (x1, x2) = oNull; // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull").WithArguments("o", "extension(object)").WithLocation(4, 16));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var assignment1 = GetSyntax<AssignmentExpressionSyntax>(tree, "var (x1, x2) = oNull");
+        Assert.Equal("void E.extension(System.Object!).Deconstruct(out System.Int32 i1, out System.Int32 i2)",
+            model.GetDeconstructionInfo(assignment1).Method.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_Deconstruct_03()
+    {
+        var src = """
+#nullable enable
+
+(object?, object?) oNull = default;
+var ((x1, x2), _) = oNull; // 1
+
+(object, object) oNotNull = (new object(), new object());
+var ((y1, y2), _) = oNotNull;
+
+static class E
+{
+    extension(object o)
+    {
+        public void Deconstruct(out int i1, out int i2) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,21): warning CS8604: Possible null reference argument for parameter 'o' in 'extension(object)'.
+            // var ((x1, x2), _) = oNull; // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull").WithArguments("o", "extension(object)").WithLocation(4, 21));
+    }
+
+    [Fact]
+    public void Nullability_Deconstruct_04()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = default;
+var (x1, x2) = oNull; // 1
+
+object oNotNull = new object();
+var (y1, y2) = oNotNull;
+
+static class E
+{
+    extension<T>(T t) where T : notnull
+    {
+        public void Deconstruct(out int i1, out int i2) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,16): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.extension<T>(T)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // var (x1, x2) = oNull; // 1
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "oNull").WithArguments("E.extension<T>(T)", "T", "object?").WithLocation(4, 16));
+    }
+
+    [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/78022")]
+    public void Nullability_ForeachDeconstruct_01()
+    {
+        var src = """
+#nullable enable
+
+object?[] oNull = new object?[] { };
+foreach (var (x1, x2) in oNull)
+{
+    x1.ToString(); // 1
+}
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public void Deconstruct(out T t1, out T t2) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (6,5): warning CS8602: Dereference of a possibly null reference.
+            //     x1.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x1").WithLocation(6, 5));
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+
+        // Tracked by https://github.com/dotnet/roslyn/issues/78022 : the semantic model is incorrect for re-inferred deconstruction
+        var assignment = tree.GetRoot().DescendantNodes().OfType<ForEachVariableStatementSyntax>().Single();
+        // Should be "void E.extension<System.Object?>(System.Object).Deconstruct(out System.Object? t1, out System.Object? t2)"
+        Assert.Equal("void E.extension<System.Object>(System.Object).Deconstruct(out System.Object t1, out System.Object t2)",
+            model.GetDeconstructionInfo(assignment).Method.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_ForeachDeconstruct_02()
+    {
+        var src = """
+#nullable enable
+
+object?[] oNull = new object?[] { };
+foreach (var (x1, x2) in oNull)
+{
+    x1.ToString(); // 1
+}
+
+object[] oNotNull = new object[] { };
+foreach (var (y1, y2) in oNotNull)
+{
+    y1.ToString(); // 1
+}
+
+static class E
+{
+    extension<T>(T t)
+    {
+        public void Deconstruct(out T t1, out T t2) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (6,5): warning CS8602: Dereference of a possibly null reference.
+            //     x1.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x1").WithLocation(6, 5));
+
+        var tree = comp.SyntaxTrees.First();
+        var model = comp.GetSemanticModel(tree);
+        var assignments = tree.GetRoot().DescendantNodes().OfType<ForEachVariableStatementSyntax>().ToArray();
+        Assert.Equal("void E.extension<System.Object>(System.Object).Deconstruct(out System.Object t1, out System.Object t2)",
+            model.GetDeconstructionInfo(assignments[0]).Method.ToTestDisplayString(includeNonNullable: true));
+
+        Assert.Equal("void E.extension<System.Object>(System.Object).Deconstruct(out System.Object t1, out System.Object t2)",
+            model.GetDeconstructionInfo(assignments[1]).Method.ToTestDisplayString(includeNonNullable: true));
+    }
+
+    [Fact]
+    public void Nullability_ForeachDeconstruct_03()
+    {
+        var src = """
+#nullable enable
+
+object?[] oNull = new object?[] { };
+foreach (var (x1, x2) in oNull)
+{
+    x1.ToString();
+}
+
+static class E
+{
+    extension<T>(T t) where T : notnull
+    {
+        public void Deconstruct(out T t1, out T t2) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (4,26): warning CS8714: The type 'object?' cannot be used as type parameter 'T' in the generic type or method 'E.extension<T>(T)'. Nullability of type argument 'object?' doesn't match 'notnull' constraint.
+            // foreach (var (x1, x2) in oNull)
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "oNull").WithArguments("E.extension<T>(T)", "T", "object?").WithLocation(4, 26),
+            // (6,5): warning CS8602: Dereference of a possibly null reference.
+            //     x1.ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x1").WithLocation(6, 5));
+    }
+
+    [Fact]
+    public void Nullability_ForeachDeconstruct_04()
+    {
+        var src = """
+#nullable enable
+
+object?[] oNull = new object?[] { };
+foreach ((_, _) in oNull) { }
+foreach ((_, _, _) in oNull) { } // 1
+
+object[] oNotNull = new object[] { };
+foreach ((_, _) in oNotNull) { }
+foreach ((_, _, _) in oNotNull) { }
+
+static class E
+{
+    extension(object? o)
+    {
+        public void Deconstruct(out int i1, out int i2) => throw null!;
+    }
+    extension(object o)
+    {
+        public void Deconstruct(out int i1, out int i2, out int i3) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (5,23): warning CS8604: Possible null reference argument for parameter 'o' in 'extension(object)'.
+            // foreach ((_, _, _) in oNull) { } // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull").WithArguments("o", "extension(object)").WithLocation(5, 23));
+    }
+
+    [Fact]
+    public void Nullability_Parameter_01()
+    {
+        var src = """
+#nullable enable
+
+static class E
+{
+    extension(object? o)
+    {
+        public void M() { o.ToString(); }
+    }
+    extension(object o)
+    {
+        public void M2() { o.ToString(); }
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (7,27): warning CS8602: Dereference of a possibly null reference.
+            //         public void M() { o.ToString(); }
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o").WithLocation(7, 27));
+    }
+
+    [Fact]
+    public void Nullability_Parameter_02()
+    {
+        var src = """
+#nullable enable
+
+static class E
+{
+    extension((object?, object?) o)
+    {
+        public void M()
+        {
+            (object, object) o2 = o;
+            o2.Item1.ToString();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+        comp.VerifyEmitDiagnostics(
+            // (9,35): warning CS8619: Nullability of reference types in value of type '(object?, object?)' doesn't match target type '(object, object)'.
+            //             (object, object) o2 = o;
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInAssignment, "o").WithArguments("(object?, object?)", "(object, object)").WithLocation(9, 35),
+            // (10,13): warning CS8602: Dereference of a possibly null reference.
+            //             o2.Item1.ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o2.Item1").WithLocation(10, 13));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_01()
+    {
+        var src = """
+#nullable enable
+
+object? o = null;
+if (o.Try())
+{
+    o.ToString();
+}
+
+object? o2 = null;
+if (o2.Try2())
+{
+    o2.ToString();
+}
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] object? o)
+    {
+        public bool Try(bool b = false)
+        {
+            if (b)
+            {
+                return true;
+            }
+
+            if (o is null)
+            {
+                return false;
+            }
+
+            return true;
+        }
+        public static bool M() => throw null!; // no warning
+    }
+
+    public static bool Try2([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] this object? o) => throw null!;
+
+    public static void M2([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] object? o) { } // no warning
+}
+""";
+        // Note: the enforcement within body only kicks in for ref/out parameters
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void Nullability_Attribute_02()
+    {
+        var src = """
+#nullable enable
+
+int? i = null;
+if (i.Try())
+{
+    i.Value.ToString();
+}
+
+int? o2 = null;
+if (o2.Try2())
+{
+    o2.Value.ToString();
+}
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] ref int? o)
+    {
+        public bool Try(bool b = false)
+        {
+            if (b)
+            {
+                return true; // 1
+            }
+
+            if (b)
+            {
+                o = 42;
+                return true;
+            }
+
+            if (b)
+            {
+                return false;
+            }
+
+            return true; // 2
+        }
+    }
+
+    public static bool Try2([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] this ref int? o) => throw null!;
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (23,17): warning CS8762: Parameter 'o' must have a non-null value when exiting with 'true'.
+            //                 return true; // 1
+            Diagnostic(ErrorCode.WRN_ParameterConditionallyDisallowsNull, "return true;").WithArguments("o", "true").WithLocation(23, 17),
+            // (37,13): warning CS8762: Parameter 'o' must have a non-null value when exiting with 'true'.
+            //             return true; // 2
+            Diagnostic(ErrorCode.WRN_ParameterConditionallyDisallowsNull, "return true;").WithArguments("o", "true").WithLocation(37, 13));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_03()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.DisallowNull] object? o)
+    {
+        public void M() 
+        {
+            o.ToString();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8604: Possible null reference argument for parameter 'o' in 'extension(object?)'.
+            // oNull.M();
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "oNull").WithArguments("o", "extension(object?)").WithLocation(4, 1));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_04()
+    {
+        var src = """
+#nullable enable
+
+int? iNull = null;
+iNull.M();
+
+int? iNotNull = 42;
+iNotNull.M();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.DisallowNull] int? i)
+    {
+        public void M() 
+        {
+            i.Value.ToString();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8607: A possible null value may not be used for a type marked with [NotNull] or [DisallowNull]
+            // iNull.M();
+            Diagnostic(ErrorCode.WRN_DisallowNullAttributeForbidsMaybeNullAssignment, "iNull").WithLocation(4, 1));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_05()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M();
+
+object? oNotNull = new object();
+oNotNull.M();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.AllowNull] object o)
+    {
+        public void M() 
+        {
+            o.ToString();
+        }
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (15,13): warning CS8602: Dereference of a possibly null reference.
+            //             o.ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o").WithLocation(15, 13));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_06()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M();
+oNull.ToString();
+
+object? oNull2 = null;
+oNull2.M2();
+oNull2.ToString();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.NotNull] object? o)
+    {
+        public void M() 
+        {
+        } // 1
+    }
+
+    public static void M2([System.Diagnostics.CodeAnalysis.NotNull] this object? o)
+    {
+    } // 2
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (17,9): warning CS8777: Parameter 'o' must have a non-null value when exiting.
+            //         } // 1
+            Diagnostic(ErrorCode.WRN_ParameterDisallowsNull, "}").WithArguments("o").WithLocation(17, 9),
+            // (22,5): warning CS8777: Parameter 'o' must have a non-null value when exiting.
+            //     } // 2
+            Diagnostic(ErrorCode.WRN_ParameterDisallowsNull, "}").WithArguments("o").WithLocation(22, 5));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_07()
+    {
+        var src = """
+#nullable enable
+
+int? iNull = null;
+iNull.M();
+iNull.Value.ToString();
+
+int? iNull2 = null;
+iNull2.M2();
+iNull2.Value.ToString();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.NotNull] ref int? o)
+    {
+        public void M() 
+        {
+        } // 1
+
+        public void M3() 
+        {
+            o = 42;
+        }
+    }
+
+    public static void M2([System.Diagnostics.CodeAnalysis.NotNull] this ref int? o)
+    {
+    } // 2
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (17,9): warning CS8777: Parameter 'o' must have a non-null value when exiting.
+            //         } // 1
+            Diagnostic(ErrorCode.WRN_ParameterDisallowsNull, "}").WithArguments("o").WithLocation(17, 9),
+            // (27,5): warning CS8777: Parameter 'o' must have a non-null value when exiting.
+            //     } // 2
+            Diagnostic(ErrorCode.WRN_ParameterDisallowsNull, "}").WithArguments("o").WithLocation(27, 5));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_08()
+    {
+        var src = """
+#nullable enable
+
+int? iNull = null;
+iNull.M();
+iNull.Value.ToString();
+
+int? iNull2 = null;
+iNull2.M2();
+iNull2.Value.ToString();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.NotNull] ref int? o)
+    {
+        public void M(bool b = false) 
+        {
+            if (b)
+                return; // 1
+
+            o = 42;
+            return;
+        }
+    }
+
+    public static void M2([System.Diagnostics.CodeAnalysis.NotNull] this ref int? o)
+    {
+        return; // 2
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (18,17): warning CS8777: Parameter 'o' must have a non-null value when exiting.
+            //                 return; // 1
+            Diagnostic(ErrorCode.WRN_ParameterDisallowsNull, "return;").WithArguments("o").WithLocation(18, 17),
+            // (27,9): warning CS8777: Parameter 'o' must have a non-null value when exiting.
+            //         return; // 2
+            Diagnostic(ErrorCode.WRN_ParameterDisallowsNull, "return;").WithArguments("o").WithLocation(27, 9));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_09()
+    {
+        var src = """
+#nullable enable
+
+object? oNotNull = new object();
+oNotNull.M(out var x);
+x.ToString();
+
+object? oNull = null;
+oNull.M(out var y);
+y.ToString(); // 1
+
+oNotNull.M2(out var x2);
+x2.ToString();
+
+object? oNull2 = null;
+oNull2.M2(out var y2);
+y2.ToString(); // 2
+
+static class E
+{
+    extension(object? o)
+    {
+        public void M([System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o))] out object? o2, bool b = false)
+        {
+            if (o is null)
+            {
+                o2 = null;
+                return;
+            }
+
+            if (b)
+            {
+                o2 = null;
+                return; // 3
+            }
+
+            if (b)
+            {
+                o2 = 42;
+                return;
+            }
+
+            o2 = null;
+        } // 4
+    }
+
+    public static void M2(this object? o, [System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o))] out object? o2, bool b = false) => throw null!;
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (9,1): warning CS8602: Dereference of a possibly null reference.
+            // y.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "y").WithLocation(9, 1),
+            // (16,1): warning CS8602: Dereference of a possibly null reference.
+            // y2.ToString(); // 2
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "y2").WithLocation(16, 1),
+            // (33,17): warning CS8824: Parameter 'o2' must have a non-null value when exiting because parameter 'o' is non-null.
+            //                 return; // 3
+            Diagnostic(ErrorCode.WRN_ParameterNotNullIfNotNull, "return;").WithArguments("o2", "o").WithLocation(33, 17),
+            // (43,9): warning CS8824: Parameter 'o2' must have a non-null value when exiting because parameter 'o' is non-null.
+            //         } // 4
+            Diagnostic(ErrorCode.WRN_ParameterNotNullIfNotNull, "}").WithArguments("o2", "o").WithLocation(43, 9));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_10()
+    {
+        var src = """
+#nullable enable
+
+object.M(out var x);
+x.ToString(); // 1
+
+object.M2(out var x2);
+x2.ToString(); // 2
+
+static class E
+{
+    extension(object? o)
+    {
+        public static void M([System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o))] out object? o2, bool b = false)
+        {
+            if (b)
+            {
+                o2 = null;
+                return;
+            }
+
+            if (b)
+            {
+                o2 = 42;
+                return;
+            }
+
+            o2 = null;
+        }
+    }
+
+    extension(object o)
+    {
+        public static void M2([System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o))] out object? o2, bool b = false)
+        {
+            if (b)
+            {
+                o2 = null;
+                return;
+            }
+
+            if (b)
+            {
+                o2 = 42;
+                return;
+            }
+
+            o2 = null;
+        }
+    }
+
+    public static void M3([System.Diagnostics.CodeAnalysis.NotNullIfNotNull("missing")] out object? o) => throw null!;
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8602: Dereference of a possibly null reference.
+            // x.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x").WithLocation(4, 1),
+            // (7,1): warning CS8602: Dereference of a possibly null reference.
+            // x2.ToString(); // 2
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x2").WithLocation(7, 1));
+    }
+
+    [Fact(Skip = "Tracked by https://github.com/dotnet/roslyn/issues/76130 : failure in creating binder in GetEnclosingBinder")]
+    public void Nullability_Attribute_11()
+    {
+        var src = """
+#nullable enable
+
+int? iNotNull = 42;
+iNotNull.M(new object());
+iNotNull.ToString();
+
+int? iNull = null;
+iNull.M(new object());
+iNull.ToString();
+
+static class E
+{
+    extension([ /*<bind>*/ System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o)) /*</bind>*/ ] ref int? i)
+    {
+        public void M(object? o)  => throw null!;
+    }
+}
+""";
+        var expectedDiagnostics = new[] {
+            // (13,84): error CS0103: The name 'o' does not exist in the current context
+            //     extension([ /*<bind>*/ System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o)) /*</bind>*/ ] ref int? i)
+            Diagnostic(ErrorCode.ERR_NameNotInContext, "o").WithArguments("o").WithLocation(13, 84)
+            };
+
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(expectedDiagnostics);
+
+        string expectedOperationTree = """
+IAttributeOperation (OperationKind.Attribute, Type: null, IsInvalid) (Syntax: 'System.Diag ... (nameof(o))')
+IObjectCreationOperation (Constructor: System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute..ctor(System.String parameterName)) (OperationKind.ObjectCreation, Type: System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute, IsInvalid, IsImplicit) (Syntax: 'System.Diag ... (nameof(o))')
+  Arguments(1):
+      IArgumentOperation (ArgumentKind.Explicit, Matching Parameter: parameterName) (OperationKind.Argument, Type: null, IsInvalid) (Syntax: 'nameof(o)')
+        INameOfOperation (OperationKind.NameOf, Type: System.String, Constant: "o", IsInvalid) (Syntax: 'nameof(o)')
+          IInvalidOperation (OperationKind.Invalid, Type: ?, IsInvalid) (Syntax: 'o')
+            Children(0)
+        InConversion: CommonConversion (Exists: True, IsIdentity: True, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+        OutConversion: CommonConversion (Exists: True, IsIdentity: True, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+  Initializer:
+    null
+""";
+
+        VerifyOperationTreeAndDiagnosticsForTest<AttributeSyntax>(src, expectedOperationTree, expectedDiagnostics, targetFramework: TargetFramework.Net90);
+
+        src = """
+#nullable enable
+
+int? iNotNull = 42;
+iNotNull.M(new object());
+iNotNull.ToString();
+
+int? iNull = null;
+iNull.M(new object());
+iNull.ToString();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.NotNullIfNotNull("o")] ref int? i)
+    {
+        public void M(object? o)  => throw null!;
+    }
+}
+""";
+        comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+
+        src = """
+#nullable enable
+
+int? iNull = null;
+iNull.M2(new object());
+iNull.Value.ToString();
+
+static class E
+{
+    public static void M2([System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o))] this ref int? i, object? o) => throw null!;
+}
+""";
+
+        comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void Nullability_Attribute_12()
+    {
+        var src = """
+#nullable enable
+
+object? oNull = null;
+oNull.M().ToString();
+
+object? oNotNull = new object();
+oNotNull.M().ToString();
+
+static class E
+{
+    extension(object? o)
+    {
+        [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o))]
+        public object? M() => o;
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (4,1): warning CS8602: Dereference of a possibly null reference.
+            // oNull.M().ToString();
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "oNull.M()").WithLocation(4, 1));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_13()
+    {
+        var src = """
+#nullable enable
+
+static class E
+{
+    static void Method(object? oNull, object oNotNull)
+    {
+        oNull.M(oNotNull);
+        oNull.ToString(); // 1
+    }
+
+    static void Method2(object? oNull, object oNotNull)
+    {
+        oNull.M2(oNotNull);
+        oNull.ToString(); // 2
+    }
+
+    extension([System.Diagnostics.CodeAnalysis.NotNullIfNotNull("o2")] object? o)
+    {
+        public void M(object? o2)  => throw null!;
+    }
+
+    public static void M2([System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(o2))] this object? o, object? o2)  => throw null!;
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (8,9): warning CS8602: Dereference of a possibly null reference.
+            //         oNull.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "oNull").WithLocation(8, 9),
+            // (14,9): warning CS8602: Dereference of a possibly null reference.
+            //         oNull.ToString(); // 2
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "oNull").WithLocation(14, 9));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_14()
+    {
+        var src = """
+#nullable enable
+
+object o = new object();
+if (o.M())
+    o.P.ToString(); // 1
+else
+    o.P.ToString(); // 2
+
+static class E
+{
+    extension(object o)
+    {
+        [System.Diagnostics.CodeAnalysis.MemberNotNullWhen(true, "P")]
+        public bool M() => throw null!;
+
+        public object? P => null;
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (5,5): warning CS8602: Dereference of a possibly null reference.
+            //     o.P.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o.P").WithLocation(5, 5),
+            // (7,5): warning CS8602: Dereference of a possibly null reference.
+            //     o.P.ToString(); // 2
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o.P").WithLocation(7, 5));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_15()
+    {
+        var src = """
+#nullable enable
+
+object o = new object();
+if (o.M())
+    o.P.ToString(); // 1
+else
+    o.P.ToString(); // 2
+
+static class E
+{
+    extension(object o)
+    {
+        [System.Diagnostics.CodeAnalysis.MemberNotNullWhen(true, nameof(P))]
+        public bool M() => throw null!;
+
+        public object? P => null;
+    }
+}
+""";
+        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : there should be no error on nameof
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (5,5): warning CS8602: Dereference of a possibly null reference.
+            //     o.P.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o.P").WithLocation(5, 5),
+            // (7,5): warning CS8602: Dereference of a possibly null reference.
+            //     o.P.ToString(); // 2
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o.P").WithLocation(7, 5),
+            // (13,73): error CS0103: The name 'P' does not exist in the current context
+            //         [System.Diagnostics.CodeAnalysis.MemberNotNullWhen(true, nameof(P))]
+            Diagnostic(ErrorCode.ERR_NameNotInContext, "P").WithArguments("P").WithLocation(13, 73));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_16()
+    {
+        var src = """
+#nullable enable
+
+object o = new object();
+o.M();
+o.P.ToString(); // 1
+
+static class E
+{
+    extension(object o)
+    {
+        [System.Diagnostics.CodeAnalysis.MemberNotNull("P")]
+        public void M() => throw null!;
+
+        public object? P => null;
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (5,1): warning CS8602: Dereference of a possibly null reference.
+            // o.P.ToString(); // 1
+            Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "o.P").WithLocation(5, 1));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_17()
+    {
+        var src = """
+#nullable enable
+
+object? o = null;
+(o is not null).AssertTrue();
+o.ToString();
+
+object? o2 = null;
+E.AssertTrue(o2 is not null);
+o2.ToString();
+
+object? o3 = null;
+object.AssertTrue2(o3 is not null);
+o3.ToString();
+
+object? o4 = null;
+E.AssertTrue2(o4 is not null);
+o4.ToString();
+
+object? o5 = null;
+(o5 is not null).AssertTrue3();
+o5.ToString();
+
+object? o6 = null;
+E.AssertTrue3(o6 is not null);
+o6.ToString();
+
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool b)
+    {
+        public void AssertTrue() => throw null!;
+    }
+
+    extension(object)
+    {
+        public static void AssertTrue2([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool b) => throw null!;
+    }
+
+    public static void AssertTrue3([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] this bool b) => throw null!;
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void Nullability_Attribute_18()
+    {
+        var src = """
+#nullable enable
+
+object? o = null;
+(o is not null).AssertTrue().M(o);
+
+object? o2 = null;
+(o2 is null).AssertTrue().M(o2);
+
+class C
+{
+    public void M(object o) { }
+}
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool b)
+    {
+        public C AssertTrue() => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (7,29): warning CS8604: Possible null reference argument for parameter 'o' in 'void C.M(object o)'.
+            // (o2 is null).AssertTrue().M(o2);
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "o2").WithArguments("o", "void C.M(object o)").WithLocation(7, 29));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_19()
+    {
+        var src = """
+#nullable enable
+
+object o = new object();
+C.M(o = null).M2();
+
+class C
+{
+    public static object M(object o) => throw null!;
+}
+
+static class E
+{
+    extension(object o)
+    {
+        public void M2() => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (4,5): warning CS8604: Possible null reference argument for parameter 'o' in 'object C.M(object o)'.
+            // C.M(o = null).M2();
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "o = null").WithArguments("o", "object C.M(object o)").WithLocation(4, 5),
+            // (4,9): warning CS8600: Converting null literal or possible null value to non-nullable type.
+            // C.M(o = null).M2();
+            Diagnostic(ErrorCode.WRN_ConvertingNullableToNonNullable, "null").WithLocation(4, 9));
+    }
+
+    [Fact]
+    public void Nullability_Attribute_20()
+    {
+        var src = """
+#nullable enable
+
+object o = new object();
+(o = null).M().M();
+
+static class E
+{
+    extension(object? o)
+    {
+        public object M() => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (4,6): warning CS8600: Converting null literal or possible null value to non-nullable type.
+            // (o = null).M().M();
+            Diagnostic(ErrorCode.WRN_ConvertingNullableToNonNullable, "null").WithLocation(4, 6));
+    }
+
+    [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/78182")]
+    public void Nullability_Attribute_21()
+    {
+        var source = @"
+#nullable enable
+
+static class Strings
+{
+    extension([System.Diagnostics.CodeAnalysis.MaybeNullWhen(true), System.Diagnostics.CodeAnalysis.NotNullWhen(false)] string? s)
+    {
+        public bool IsEmpty() => string.IsNullOrEmpty(s);
+    }
+
+    public static bool IsEmpty2([System.Diagnostics.CodeAnalysis.MaybeNullWhen(true), System.Diagnostics.CodeAnalysis.NotNullWhen(false)] this string? s)
+        => string.IsNullOrEmpty(s);
+}
+
+class C
+{
+    public string? TextKey { get; set; }
+    bool IsValid => !TextKey.IsEmpty();
+    bool IsValid2 => !TextKey.IsEmpty2();
+}
+";
+        var comp = CreateCompilation(source, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void Nullability_Attribute_22()
+    {
+        var src = """
+#nullable enable
+
+C.Try(out var x).AssertTrue().M(x);
+C.Try(out var y).AssertFalse().M(y);
+
+class C
+{
+    public static bool Try([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out object? o) => throw null!;
+    public void M(object o) { }
+}
+static class E
+{
+    extension([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool b)
+    {
+        public C AssertTrue() => throw null!;
+    }
+
+    extension([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(true)] bool b)
+    {
+        public C AssertFalse() => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics(
+            // (4,34): warning CS8604: Possible null reference argument for parameter 'o' in 'void C.M(object o)'.
+            // C.Try(out var y).AssertFalse().M(y);
+            Diagnostic(ErrorCode.WRN_NullReferenceArgument, "y").WithArguments("o", "void C.M(object o)").WithLocation(4, 34));
+    }
+
+    [Fact]
+    public void BuildArgumentsForErrorRecovery_01()
+    {
+        var src = """
+/*<bind>*/
+"".M("");
+/*</bind>*/
+
+static class E
+{
+    extension(object o)
+    {
+        public void M(string s) => throw null!;
+    }
+
+    extension(string s)
+    {
+        public void M(object o) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+
+        var expectedDiagnostics = new[] {
+            // (2,4): error CS0121: The call is ambiguous between the following methods or properties: 'E.extension(object).M(string)' and 'E.extension(string).M(object)'
+            // "".M("");
+            Diagnostic(ErrorCode.ERR_AmbigCall, "M").WithArguments("E.extension(object).M(string)", "E.extension(string).M(object)").WithLocation(2, 4)
+            };
+
+        comp.VerifyEmitDiagnostics(expectedDiagnostics);
+
+        string expectedOperationTree = """
+IExpressionStatementOperation (OperationKind.ExpressionStatement, Type: null, IsInvalid) (Syntax: '"".M("");')
+  Expression:
+    IInvalidOperation (OperationKind.Invalid, Type: System.Void, IsInvalid) (Syntax: '"".M("")')
+      Children(2):
+          ILiteralOperation (OperationKind.Literal, Type: System.String, Constant: "") (Syntax: '""')
+          ILiteralOperation (OperationKind.Literal, Type: System.String, Constant: "") (Syntax: '""')
+""";
+
+        VerifyOperationTreeAndDiagnosticsForTest<ExpressionStatementSyntax>(src, expectedOperationTree, expectedDiagnostics);
+    }
+
+    [Fact]
+    public void BuildArgumentsForErrorRecovery_02()
+    {
+        var src = """
+string s = "";
+/*<bind>*/
+s.M(s);
+/*</bind>*/
+
+static class E
+{
+    extension(object o)
+    {
+        public void M(string s) => throw null!;
+    }
+
+    extension(string s)
+    {
+        public void M(object o) => throw null!;
+    }
+}
+""";
+        var comp = CreateCompilation(src);
+
+        var expectedDiagnostics = new[] {
+            // (3,3): error CS0121: The call is ambiguous between the following methods or properties: 'E.extension(object).M(string)' and 'E.extension(string).M(object)'
+            // s.M(s);
+            Diagnostic(ErrorCode.ERR_AmbigCall, "M").WithArguments("E.extension(object).M(string)", "E.extension(string).M(object)").WithLocation(3, 3)
+            };
+
+        comp.VerifyEmitDiagnostics(expectedDiagnostics);
+
+        string expectedOperationTree = """
+IExpressionStatementOperation (OperationKind.ExpressionStatement, Type: null, IsInvalid) (Syntax: 's.M(s);')
+Expression:
+  IInvalidOperation (OperationKind.Invalid, Type: System.Void, IsInvalid) (Syntax: 's.M(s)')
+    Children(2):
+        ILocalReferenceOperation: s (OperationKind.LocalReference, Type: System.String) (Syntax: 's')
+        ILocalReferenceOperation: s (OperationKind.LocalReference, Type: System.String) (Syntax: 's')
+""";
+
+        VerifyOperationTreeAndDiagnosticsForTest<ExpressionStatementSyntax>(src, expectedOperationTree, expectedDiagnostics);
+    }
+
+    [Fact]
+    public void BuildArgumentsForErrorRecovery_03()
+    {
+        var source = @"
+#nullable enable
+
+bool b = true;
+(b switch { true => 1, false => null}).M(ERROR);
+
+static class E
+{
+    extension(int? i)
+    {
+        public void M(object o) => throw null!;
+    }
+}
+";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (5,4): error CS8506: No best type was found for the switch expression.
+            // (b switch { true => 1, false => null}).M(ERROR);
+            Diagnostic(ErrorCode.ERR_SwitchExpressionNoBestType, "switch").WithLocation(5, 4),
+            // (5,33): warning CS8619: Nullability of reference types in value of type '<null>' doesn't match target type 'int'.
+            // (b switch { true => 1, false => null}).M(ERROR);
+            Diagnostic(ErrorCode.WRN_NullabilityMismatchInAssignment, "null").WithArguments("<null>", "int").WithLocation(5, 33),
+            // (5,42): error CS0103: The name 'ERROR' does not exist in the current context
+            // (b switch { true => 1, false => null}).M(ERROR);
+            Diagnostic(ErrorCode.ERR_NameNotInContext, "ERROR").WithArguments("ERROR").WithLocation(5, 42));
+    }
+
+    [Fact]
+    public void BuildArgumentsForErrorRecovery_04()
+    {
+        var source = @"
+object.M(ERROR);
+
+static class E
+{
+    extension(object)
+    {
+        public static void M(object o) => throw null!;
+    }
+}
+";
+        var comp = CreateCompilation(source);
+        comp.VerifyEmitDiagnostics(
+            // (2,10): error CS0103: The name 'ERROR' does not exist in the current context
+            // object.M(ERROR);
+            Diagnostic(ErrorCode.ERR_NameNotInContext, "ERROR").WithArguments("ERROR").WithLocation(2, 10));
+    }
+
+    [Fact]
+    public void SpecialName_01()
+    {
+        // extension(int)
+        // {
+        //    public void M() { }
+        //    public int P { get; }
+        // }
+        // but with specialname missing from marker method
+        var ilSrc = """
+.class public auto ansi abstract sealed beforefieldinit E
+    extends [mscorlib]System.Object
+{
+    .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = ( 01 00 00 00 )
+
+    .class nested public auto ansi sealed beforefieldinit '<>E__0'
+        extends [mscorlib]System.Object
+    {
+        .method private hidebysig static void '<Extension>$' ( int32 '' ) cil managed 
+        {
+            .custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 )
+            IL_0000: ret
+        }
+        .method public hidebysig instance void M () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .method public hidebysig specialname instance int32 get_P () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .property instance int32 P()
+        {
+            .get instance int32 E/'<>E__0'::get_P()
+        }
+    }
+    .method public hidebysig static void M ( int32 '' ) cil managed 
+    {
+        .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = ( 01 00 00 00 )
+        IL_0000: ret
+    }
+    .method public hidebysig static int32 get_P ( int32 '' ) cil managed 
+    {
+        IL_0000: ldc.i4.0
+        IL_0001: ret
+    }
+}
+""";
+        string source = """
+42.M();
+_ = 42.P;
+""";
+        var comp = CreateCompilationWithIL(source, ilSrc);
+        comp.VerifyEmitDiagnostics(
+            // (2,8): error CS1061: 'int' does not contain a definition for 'P' and no accessible extension method 'P' accepting a first argument of type 'int' could be found (are you missing a using directive or an assembly reference?)
+            // _ = 42.P;
+            Diagnostic(ErrorCode.ERR_NoSuchMemberOrExtension, "P").WithArguments("int", "P").WithLocation(2, 8));
+    }
+
+    [Fact]
+    public void SpecialName_02()
+    {
+        // extension(int)
+        // {
+        //    public void M() { }
+        //    public void M2() { }
+        //    public int P { get; }
+        //    public int P2 { get; }
+        // }
+        // but with specialname mismatch between skeleton and implementation methods
+        var ilSrc = """
+.class public auto ansi abstract sealed beforefieldinit E
+    extends [mscorlib]System.Object
+{
+    .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = ( 01 00 00 00 )
+
+    .class nested public auto ansi sealed beforefieldinit '<>E__0'
+        extends [mscorlib]System.Object
+    {
+        .method private hidebysig specialname static void '<Extension>$' ( int32 '' ) cil managed 
+        {
+            .custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 )
+            IL_0000: ret
+        }
+        .method public hidebysig instance void M () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .method public hidebysig specialname instance void M2 () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .method public hidebysig specialname instance int32 get_P () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .method public hidebysig instance int32 get_P2 () cil managed 
+        {
+            IL_0000: ldnull
+            IL_0001: throw
+        }
+        .property instance int32 P()
+        {
+            .get instance int32 E/'<>E__0'::get_P()
+        }
+        .property instance int32 P2()
+        {
+            .get instance int32 E/'<>E__0'::get_P2()
+        }
+    }
+    .method public hidebysig specialname static void M ( int32 '' ) cil managed 
+    {
+        .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = ( 01 00 00 00 )
+        IL_0000: ret
+    }
+    .method public hidebysig static void M2 ( int32 '' ) cil managed 
+    {
+        .custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = ( 01 00 00 00 )
+        IL_0000: ret
+    }
+    .method public hidebysig static int32 get_P ( int32 '' ) cil managed 
+    {
+        IL_0000: ldc.i4.0
+        IL_0001: ret
+    }
+    .method public hidebysig specialname static int32 get_P2 ( int32 '' ) cil managed 
+    {
+        IL_0000: ldc.i4.0
+        IL_0001: ret
+    }
+}
+""";
+        string source = """
+42.M();
+42.M2();
+_ = 42.P;
+_ = 42.P2;
+""";
+        var comp = CreateCompilationWithIL(source, ilSrc);
+        comp.VerifyEmitDiagnostics();
+    }
+
+    [Fact]
+    public void SkipLocalsInit_01()
+    {
+        string source = """
+static unsafe class E
+{
+    extension(int i)
+    {
+        [System.Runtime.CompilerServices.SkipLocalsInitAttribute]
+        public int P
+        {
+            get { int j = 0; return j; }
+        }
+
+        public int P2
+        {
+            get { int j = 0; return j; }
+        }
+    }
+}
+""";
+
+        var comp = CreateCompilation(source, options: TestOptions.UnsafeDebugDll, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+        var verifier = CompileAndVerify(comp, verify: Verification.Skipped);
+        Assert.False(verifier.HasLocalsInit("E.get_P"));
+        Assert.True(verifier.HasLocalsInit("E.get_P2"));
+    }
+
+    [Fact]
+    public void SkipLocalsInit_02()
+    {
+        string source = """
+static unsafe class E
+{
+    extension(int i)
+    {
+        [System.Runtime.CompilerServices.SkipLocalsInitAttribute]
+        public int M() { int j = 0; return j; }
+
+        public int M2() { int j = 0; return j; }
+    }
+}
+""";
+
+        var comp = CreateCompilation(source, options: TestOptions.UnsafeDebugDll, targetFramework: TargetFramework.Net90);
+        comp.VerifyEmitDiagnostics();
+        var verifier = CompileAndVerify(comp, verify: Verification.Skipped);
+        Assert.False(verifier.HasLocalsInit("E.M"));
+        Assert.True(verifier.HasLocalsInit("E.M2"));
     }
 }

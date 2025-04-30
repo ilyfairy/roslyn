@@ -17,7 +17,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.PooledObjects;
 using Microsoft.CodeAnalysis.Text;
 using Roslyn.Utilities;
-using ReferenceEqualityComparer = Roslyn.Utilities.ReferenceEqualityComparer;
 
 namespace Microsoft.CodeAnalysis.CSharp.Symbols
 {
@@ -506,7 +505,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             if (reportIfContextual(SyntaxKind.RecordKeyword, MessageID.IDS_FeatureRecords, ErrorCode.WRN_RecordNamedDisallowed)
                 || reportIfContextual(SyntaxKind.RequiredKeyword, MessageID.IDS_FeatureRequiredMembers, ErrorCode.ERR_RequiredNameDisallowed)
                 || reportIfContextual(SyntaxKind.FileKeyword, MessageID.IDS_FeatureFileTypes, ErrorCode.ERR_FileTypeNameDisallowed)
-                || reportIfContextual(SyntaxKind.ScopedKeyword, MessageID.IDS_FeatureRefFields, ErrorCode.ERR_ScopedTypeNameDisallowed))
+                || reportIfContextual(SyntaxKind.ScopedKeyword, MessageID.IDS_FeatureRefFields, ErrorCode.ERR_ScopedTypeNameDisallowed)
+                || reportIfContextual(SyntaxKind.ExtensionKeyword, MessageID.IDS_FeatureExtensions, ErrorCode.ERR_ExtensionTypeNameDisallowed))
             {
                 return;
             }
@@ -2734,6 +2734,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             CheckForUnmatchedOperator(diagnostics, WellKnownMemberNames.CheckedSubtractionOperatorName, WellKnownMemberNames.SubtractionOperatorName, symmetricCheck: false);
             CheckForUnmatchedOperator(diagnostics, WellKnownMemberNames.CheckedExplicitConversionName, WellKnownMemberNames.ExplicitConversionName, symmetricCheck: false);
 
+            CheckForUnmatchedOperator(diagnostics, WellKnownMemberNames.CheckedAdditionAssignmentOperatorName, WellKnownMemberNames.AdditionAssignmentOperatorName, symmetricCheck: false);
+            CheckForUnmatchedOperator(diagnostics, WellKnownMemberNames.CheckedDivisionAssignmentOperatorName, WellKnownMemberNames.DivisionAssignmentOperatorName, symmetricCheck: false);
+            CheckForUnmatchedOperator(diagnostics, WellKnownMemberNames.CheckedMultiplicationAssignmentOperatorName, WellKnownMemberNames.MultiplicationAssignmentOperatorName, symmetricCheck: false);
+            CheckForUnmatchedOperator(diagnostics, WellKnownMemberNames.CheckedSubtractionAssignmentOperatorName, WellKnownMemberNames.SubtractionAssignmentOperatorName, symmetricCheck: false);
+
             // We also produce a warning if == / != is overridden without also overriding
             // Equals and GetHashCode, or if Equals is overridden without GetHashCode.
 
@@ -2787,6 +2792,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         {
             foreach (var op1 in ops1)
             {
+                if (op1.IsOverride)
+                {
+                    continue;
+                }
+
                 bool foundMatch = false;
                 foreach (var op2 in ops2)
                 {
@@ -2829,9 +2839,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
         private void CheckForEqualityAndGetHashCode(BindingDiagnosticBag diagnostics)
         {
-            if (this.IsInterfaceType())
+            if (this.IsInterfaceType() || this.IsExtension)
             {
-                // Interfaces are allowed to define Equals without GetHashCode if they want.
+                // Interfaces and extension blocks are allowed to define Equals without GetHashCode if they want.
                 return;
             }
 
@@ -4614,7 +4624,6 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                         {
                             case MethodKind.Constructor:
                             case MethodKind.Conversion:
-                            case MethodKind.UserDefinedOperator:
                             case MethodKind.Destructor:
                             case MethodKind.EventAdd:
                             case MethodKind.EventRemove:
@@ -4624,6 +4633,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                                 // error, but reported elsewhere
                                 return;
                             case MethodKind.Ordinary:
+                            case MethodKind.UserDefinedOperator:
                             case MethodKind.PropertyGet:
                             case MethodKind.PropertySet:
                                 return;
@@ -4633,6 +4643,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                         break;
 
                     case SymbolKind.Property:
+                        // Tracked by https://github.com/dotnet/roslyn/issues/76130 : add full support for indexers or disallow them
                         return;
 
                     case SymbolKind.Field:

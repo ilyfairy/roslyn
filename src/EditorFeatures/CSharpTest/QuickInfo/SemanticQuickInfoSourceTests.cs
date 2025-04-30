@@ -1501,6 +1501,120 @@ public sealed class SemanticQuickInfoSourceTests : AbstractSemanticQuickInfoSour
             MainDescription("C C.operator >>>(C a, C b)"));
     }
 
+    [Theory]
+    [CombinatorialData]
+    public async Task TestInstanceIncrementOperators_Postfix([CombinatorialValues("++", "--")] string op)
+    {
+        var markup =
+            $$$"""
+            class C
+            {
+                static void M() { C c; c{{{op}}}$$; }
+                public void operator {{{op}}}() {}
+            }
+            """;
+
+        await TestWithOptionsAsync(
+            Options.Regular.WithLanguageVersion(LanguageVersion.Preview),
+            markup,
+            MainDescription($"void C.operator {op}()"));
+    }
+
+    [Theory]
+    [CombinatorialData]
+    public async Task TestInstanceIncrementOperators_Postfix_Checked([CombinatorialValues("++", "--")] string op)
+    {
+        var markup =
+            $$$"""
+            class C
+            {
+                static void M() { checked { C c; c{{{op}}}$$; } }
+                public void operator checked {{{op}}}() {}
+            }
+            """;
+
+        await TestWithOptionsAsync(
+            Options.Regular.WithLanguageVersion(LanguageVersion.Preview),
+            markup,
+            MainDescription($"void C.operator checked {op}()"));
+    }
+
+    [Theory]
+    [CombinatorialData]
+    public async Task TestInstanceIncrementOperators_Prefix([CombinatorialValues("++", "--")] string op)
+    {
+        var markup =
+            $$$"""
+            class C
+            {
+                static void M() { C c; {{{op}}}$$ c; }
+                public void operator {{{op}}}() {}
+            }
+            """;
+
+        await TestWithOptionsAsync(
+            Options.Regular.WithLanguageVersion(LanguageVersion.Preview),
+            markup,
+            MainDescription($"void C.operator {op}()"));
+    }
+
+    [Theory]
+    [CombinatorialData]
+    public async Task TestInstanceIncrementOperators_Prefix_Checked([CombinatorialValues("++", "--")] string op)
+    {
+        var markup =
+            $$$"""
+            class C
+            {
+                static void M() { checked { C c; {{{op}}}$$ c; } }
+                public void operator checked {{{op}}}() {}
+            }
+            """;
+
+        await TestWithOptionsAsync(
+            Options.Regular.WithLanguageVersion(LanguageVersion.Preview),
+            markup,
+            MainDescription($"void C.operator checked {op}()"));
+    }
+
+    [Theory]
+    [CombinatorialData]
+    public async Task TestInstanceCompoundAssignmentOperators([CombinatorialValues("+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=", ">>>=")] string op)
+    {
+        var markup =
+            $$$"""
+            class C
+            {
+                static void M() { C c; c {{{op}}}$$ 1; }
+                public void operator {{{op}}}(int x) {}
+            }
+            """;
+
+        await TestWithOptionsAsync(
+            Options.Regular.WithLanguageVersion(LanguageVersion.Preview),
+            markup,
+            MainDescription($"void C.operator {op}(int x)"));
+    }
+
+    [Theory]
+    [CombinatorialData]
+    public async Task TestInstanceCompoundAssignmentOperators_Checked([CombinatorialValues("+=", "-=", "*=", "/=")] string op)
+    {
+        var markup =
+            $$$"""
+            class C
+            {
+                static void M() { checked { C c; c {{{op}}}$$ 1; } }
+                public void operator checked {{{op}}}(int x) {}
+            }
+            """;
+
+        await TestWithOptionsAsync(
+            Options.Regular.WithLanguageVersion(LanguageVersion.Preview),
+            markup,
+            MainDescription($"void C.operator checked {op}(int x)"));
+    }
+
     [Fact]
     public async Task TestFieldInMethodMinimal()
     {
@@ -5542,6 +5656,31 @@ MainDescription($"({FeaturesResources.parameter}) params int[] xs"));
                 }
             }
             """);
+    }
+
+    [Fact, WorkItem("https://github.com/dotnet/roslyn/issues/78171")]
+    public async Task TestPreprocessingSymbol()
+    {
+        var markup = """
+            using System.Threading;
+            using System.Threading.Tasks;
+
+            class Program
+            {
+                async Task Process(CancellationToken cancellationToken = default)
+                {
+            #if N$$ET
+                    // .NET requires 100ms delay in this fictional example
+                    await Task.Delay(100, cancellationToken);
+            #else
+                    // .NET Framework requires 200ms delay in this fictional example, and we can't pass a CT on it
+                    await Task.Delay(200);
+            #endif
+                }
+            }
+            """;
+
+        await TestAsync(markup, MainDescription("NET"));
     }
 
     [Fact, WorkItem("http://vstfdevdiv:8080/DevDiv2/DevDiv/_workitems/edit/546849")]
@@ -10700,6 +10839,23 @@ AnonymousTypes(
             }
             """,
             MainDescription($"({CSharpFeaturesResources.awaitable}) ValueTask IAsyncDisposable.DisposeAsync()"));
+    }
+
+    [Fact]
+    public async Task NullConditionalAssignment()
+    {
+        await VerifyWithNet8Async("""
+            class C
+            {
+                string s;
+
+                void M(C c)
+                {
+                    c?.$$s = "";
+                }
+            }
+            """,
+            MainDescription($"({FeaturesResources.field}) string C.s"));
     }
 
     [Fact]

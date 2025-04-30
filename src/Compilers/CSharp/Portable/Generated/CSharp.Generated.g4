@@ -245,7 +245,7 @@ type_constraint
   ;
 
 operator_declaration
-  : attribute_list* modifier* type explicit_interface_specifier? 'operator' 'checked'? ('+' | '-' | '!' | '~' | '++' | '--' | '*' | '/' | '%' | '<<' | '>>' | '>>>' | '|' | '&' | '^' | '==' | '!=' | '<' | '<=' | '>' | '>=' | 'false' | 'true' | 'is') parameter_list (block | (arrow_expression_clause ';'))
+  : attribute_list* modifier* type explicit_interface_specifier? 'operator' 'checked'? ('+' | '-' | '!' | '~' | '++' | '--' | '*' | '/' | '%' | '<<' | '>>' | '>>>' | '|' | '&' | '^' | '==' | '!=' | '<' | '<=' | '>' | '>=' | 'false' | 'true' | 'is' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=' | '>>>=') parameter_list (block | (arrow_expression_clause ';'))
   ;
 
 base_namespace_declaration
@@ -1231,7 +1231,7 @@ name_member_cref
   ;
 
 operator_member_cref
-  : 'operator' 'checked'? ('+' | '-' | '!' | '~' | '++' | '--' | '*' | '/' | '%' | '<<' | '>>' | '>>>' | '|' | '&' | '^' | '==' | '!=' | '<' | '<=' | '>' | '>=' | 'false' | 'true') cref_parameter_list?
+  : 'operator' 'checked'? ('+' | '-' | '!' | '~' | '++' | '--' | '*' | '/' | '%' | '<<' | '>>' | '>>>' | '|' | '&' | '^' | '==' | '!=' | '<' | '<=' | '>' | '>=' | 'false' | 'true' | '+=' | '-=' | '*=' | '/=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=' | '>>>=') cref_parameter_list?
   ;
 
 qualified_cref
@@ -1279,6 +1279,7 @@ directive_trivia
   | end_if_directive_trivia
   | end_region_directive_trivia
   | error_directive_trivia
+  | ignored_directive_trivia
   | line_or_span_directive_trivia
   | load_directive_trivia
   | nullable_directive_trivia
@@ -1331,6 +1332,10 @@ end_region_directive_trivia
 
 error_directive_trivia
   : '#' 'error'
+  ;
+
+ignored_directive_trivia
+  : '#' ':' string_literal_token?
   ;
 
 line_or_span_directive_trivia

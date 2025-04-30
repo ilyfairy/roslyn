@@ -2121,7 +2121,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                         {
                             Error(diagnostics, ErrorCode.ERR_InvalidPrimaryConstructorParameterReference, node, parameter);
                         }
-                        else if (parameter.ContainingSymbol is NamedTypeSymbol { IsExtension: true } &&
+                        else if (parameter.IsExtensionParameter() &&
                                 (InParameterDefaultValue || InAttributeArgument ||
                                  this.ContainingMember() is not { Kind: not SymbolKind.NamedType, IsStatic: false } || // We are not in an instance member
                                  (object)this.ContainingMember().ContainingSymbol != parameter.ContainingSymbol) &&
@@ -11326,6 +11326,10 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             var conditionalAccessBinder = new BinderWithConditionalReceiver(this, receiver);
             var access = conditionalAccessBinder.BindValue(node.WhenNotNull, diagnostics, BindValueKind.RValue);
+            if (access.Syntax is AssignmentExpressionSyntax assignment)
+            {
+                MessageID.IDS_FeatureNullConditionalAssignment.CheckFeatureAvailability(diagnostics, assignment.OperatorToken);
+            }
 
             if (receiver.HasAnyErrors || access.HasAnyErrors)
             {
@@ -11360,38 +11364,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // For improved diagnostics we detect the cases where the value will be used and produce a
                 // more specific (though not technically correct) diagnostic here:
                 // "Error CS0023: Operator '?' cannot be applied to operand of type 'T'"
-                bool resultIsUsed = true;
-                CSharpSyntaxNode parent = node.Parent;
-
-                if (parent != null)
-                {
-                    switch (parent.Kind())
-                    {
-                        case SyntaxKind.ExpressionStatement:
-                            resultIsUsed = ((ExpressionStatementSyntax)parent).Expression != node;
-                            break;
-
-                        case SyntaxKind.SimpleLambdaExpression:
-                            resultIsUsed = (((SimpleLambdaExpressionSyntax)parent).Body != node) || MethodOrLambdaRequiresValue(ContainingMemberOrLambda, Compilation);
-                            break;
-
-                        case SyntaxKind.ParenthesizedLambdaExpression:
-                            resultIsUsed = (((ParenthesizedLambdaExpressionSyntax)parent).Body != node) || MethodOrLambdaRequiresValue(ContainingMemberOrLambda, Compilation);
-                            break;
-
-                        case SyntaxKind.ArrowExpressionClause:
-                            resultIsUsed = (((ArrowExpressionClauseSyntax)parent).Expression != node) || MethodOrLambdaRequiresValue(ContainingMemberOrLambda, Compilation);
-                            break;
-
-                        case SyntaxKind.ForStatement:
-                            // Incrementors and Initializers doesn't have to produce a value
-                            var loop = (ForStatementSyntax)parent;
-                            resultIsUsed = !loop.Incrementors.Contains(node) && !loop.Initializers.Contains(node);
-                            break;
-                    }
-                }
-
-                if (resultIsUsed)
+                if (ResultIsUsed(node))
                 {
                     return GenerateBadConditionalAccessNodeError(node, receiver, access, diagnostics);
                 }
@@ -11408,6 +11381,42 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
             return new BoundConditionalAccess(node, receiver, access, accessType);
+        }
+
+        private bool ResultIsUsed(ExpressionSyntax node)
+        {
+            bool resultIsUsed = true;
+            CSharpSyntaxNode parent = node.Parent;
+
+            if (parent != null)
+            {
+                switch (parent.Kind())
+                {
+                    case SyntaxKind.ExpressionStatement:
+                        resultIsUsed = ((ExpressionStatementSyntax)parent).Expression != node;
+                        break;
+
+                    case SyntaxKind.SimpleLambdaExpression:
+                        resultIsUsed = (((SimpleLambdaExpressionSyntax)parent).Body != node) || MethodOrLambdaRequiresValue(ContainingMemberOrLambda, Compilation);
+                        break;
+
+                    case SyntaxKind.ParenthesizedLambdaExpression:
+                        resultIsUsed = (((ParenthesizedLambdaExpressionSyntax)parent).Body != node) || MethodOrLambdaRequiresValue(ContainingMemberOrLambda, Compilation);
+                        break;
+
+                    case SyntaxKind.ArrowExpressionClause:
+                        resultIsUsed = (((ArrowExpressionClauseSyntax)parent).Expression != node) || MethodOrLambdaRequiresValue(ContainingMemberOrLambda, Compilation);
+                        break;
+
+                    case SyntaxKind.ForStatement:
+                        // Incrementors and Initializers doesn't have to produce a value
+                        var loop = (ForStatementSyntax)parent;
+                        resultIsUsed = !loop.Incrementors.Contains(node) && !loop.Initializers.Contains(node);
+                        break;
+                }
+            }
+
+            return resultIsUsed;
         }
 
         internal static bool MethodOrLambdaRequiresValue(Symbol symbol, CSharpCompilation compilation)

@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Composition;
+using Microsoft.CodeAnalysis.ExternalAccess.Razor;
 using Microsoft.CodeAnalysis.ExternalAccess.Razor.Features;
 using Microsoft.CodeAnalysis.Host;
 using Microsoft.CodeAnalysis.Host.Mef;
@@ -18,7 +19,7 @@ namespace Microsoft.CodeAnalysis.LanguageServer.HostWorkspace.Razor;
 [ExportMetadata("Extensions", new string[] { "cshtml", "razor", })]
 [method: ImportingConstructor]
 [method: Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
-internal partial class RazorDynamicFileInfoProvider(Lazy<LanguageServerWorkspaceFactory> workspaceFactory, ILoggerFactory loggerFactory) : IDynamicFileInfoProvider, ILspService, IOnInitialized
+internal sealed partial class RazorDynamicFileInfoProvider(Lazy<LanguageServerWorkspaceFactory> workspaceFactory, ILoggerFactory loggerFactory) : IDynamicFileInfoProvider, ILspService, IOnInitialized
 {
     private RazorWorkspaceService? _razorWorkspaceService;
     private RazorLspDynamicFileInfoProvider? _dynamicFileInfoProvider;
@@ -47,7 +48,7 @@ internal partial class RazorDynamicFileInfoProvider(Lazy<LanguageServerWorkspace
             dynamicInfo.SourceCodeKind,
             dynamicInfo.TextLoader,
             designTimeOnly: true,
-            documentServiceProvider: null);
+            documentServiceProvider: new RazorDocumentServiceProviderWrapper(dynamicInfo.DocumentServiceProvider));
     }
 
     public Task OnInitializedAsync(ClientCapabilities clientCapabilities, RequestContext context, CancellationToken cancellationToken)
