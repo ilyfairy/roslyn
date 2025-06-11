@@ -547,7 +547,7 @@
     <value>Inconsistent accessibility: indexer return type '{1}' is less accessible than indexer '{0}'</value>
   </data>
   <data name="ERR_BadVisIndexerParam" xml:space="preserve">
-    <value>Inconsistent accessibility: parameter type '{1}' is less accessible than indexer '{0}'</value>
+    <value>Inconsistent accessibility: parameter type '{1}' is less accessible than indexer or property '{0}'</value>
   </data>
   <data name="ERR_BadVisOpReturn" xml:space="preserve">
     <value>Inconsistent accessibility: return type '{1}' is less accessible than operator '{0}'</value>
@@ -5314,6 +5314,9 @@ To remove the warning, you can use /reference instead (set the Embed Interop Typ
   <data name="ERR_TooManyUserStrings" xml:space="preserve">
     <value>Combined length of user strings used by the program exceeds allowed limit. Try to decrease use of string literals or try the EXPERIMENTAL feature flag 'experimental-data-section-string-literals'.</value>
   </data>
+  <data name="ERR_TooManyUserStrings_RestartRequired" xml:space="preserve">
+    <value>Combined length of user strings used by the program exceeds allowed limit. Adding a string literal requires restarting the application.</value>
+  </data>
   <data name="ERR_PatternNullableType" xml:space="preserve">
     <value>It is not legal to use nullable type '{0}?' in a pattern; use the underlying type '{0}' instead.</value>
   </data>
@@ -8167,9 +8170,6 @@ To remove the warning, you can use /reference instead (set the Embed Interop Typ
   <data name="ERR_OperatorsMustBePublic" xml:space="preserve">
     <value>User-defined operator '{0}' must be declared public</value>
   </data>
-  <data name="ERR_BadIncrementOpArgs" xml:space="preserve">
-    <value>Overloaded instance increment operator '{0}' must take no parameters</value>
-  </data>
   <data name="ERR_OperatorMustReturnVoid" xml:space="preserve">
     <value>The return type for this operator must be void</value>
   </data>
@@ -8181,6 +8181,9 @@ To remove the warning, you can use /reference instead (set the Embed Interop Typ
   </data>
   <data name="ERR_BadCompoundAssignmentOpArgs" xml:space="preserve">
     <value>Overloaded compound assignment operator '{0}' takes one parameter</value>
+  </data>
+  <data name="ERR_PPShebangInProjectBasedProgram" xml:space="preserve">
+    <value>'#!' directives can be only used in scripts or file-based programs</value>
   </data>
   <data name="ERR_BadExtensionUnaryOperatorSignature" xml:space="preserve">
     <value>The parameter of a unary operator must be the extended type.</value>
@@ -8196,5 +8199,11 @@ To remove the warning, you can use /reference instead (set the Embed Interop Typ
   </data>
   <data name="ERR_OperatorInExtensionOfStaticClass" xml:space="preserve">
     <value>An extension block extending a static class cannot contain user-defined operators</value>
+  </data>
+  <data name="ERR_InstanceOperatorStructExtensionWrongReceiverRefKind" xml:space="preserve">
+    <value>Cannot declare instance operator for a struct unless containing extension block receiver parameter is a 'ref' parameter</value>
+  </data>
+  <data name="ERR_InstanceOperatorExtensionWrongReceiverType" xml:space="preserve">
+    <value>Cannot declare instance extension operator for a type that is not known to be a struct and is not known to be a class</value>
   </data>
 </root>

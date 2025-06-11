@@ -267,11 +267,6 @@
         <target state="translated">関数ポインター パラメーターでは、'{0}' を修飾子として使用することはできません。</target>
         <note />
       </trans-unit>
-      <trans-unit id="ERR_BadIncrementOpArgs">
-        <source>Overloaded instance increment operator '{0}' must take no parameters</source>
-        <target state="new">Overloaded instance increment operator '{0}' must take no parameters</target>
-        <note />
-      </trans-unit>
       <trans-unit id="ERR_BadInheritanceFromRecord">
         <source>Only records may inherit from records.</source>
         <target state="translated">レコードから継承できるのはレコードだけです。</target>
@@ -1127,6 +1122,16 @@
         <target state="new">'{0}': cannot declare instance members in an extension block with an unnamed receiver parameter</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_InstanceOperatorExtensionWrongReceiverType">
+        <source>Cannot declare instance extension operator for a type that is not known to be a struct and is not known to be a class</source>
+        <target state="new">Cannot declare instance extension operator for a type that is not known to be a struct and is not known to be a class</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ERR_InstanceOperatorStructExtensionWrongReceiverRefKind">
+        <source>Cannot declare instance operator for a struct unless containing extension block receiver parameter is a 'ref' parameter</source>
+        <target state="new">Cannot declare instance operator for a struct unless containing extension block receiver parameter is a 'ref' parameter</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_InstancePropertyInitializerInInterface">
         <source>Instance properties in interfaces cannot have initializers.</source>
         <target state="translated">インターフェイス内のインスタンス プロパティは初期化子を持つことができません。</target>
@@ -1787,6 +1792,11 @@
         <target state="new">'#:' directives can be only used in file-based programs ('-features:FileBasedProgram')</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_PPShebangInProjectBasedProgram">
+        <source>'#!' directives can be only used in scripts or file-based programs</source>
+        <target state="new">'#!' directives can be only used in scripts or file-based programs</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_ParamsCollectionConstructorDoesntInitializeRequiredMember">
         <source>Constructor '{0}' leaves required member '{1}' uninitialized.</source>
         <target state="translated">コンストラクター '{0}' は、必要なメンバー '{1}' を初期化しないままにします。</target>
@@ -2420,6 +2430,11 @@
       <trans-unit id="ERR_TooManyQuotesForRawString">
         <source>The raw string literal does not start with enough quote characters to allow this many consecutive quote characters as content.</source>
         <target state="translated">生文字列リテラルの先頭に十分な数の引用符文字がないため、連続した引用符文字をコンテンツとして使用できません。</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ERR_TooManyUserStrings_RestartRequired">
+        <source>Combined length of user strings used by the program exceeds allowed limit. Adding a string literal requires restarting the application.</source>
+        <target state="new">Combined length of user strings used by the program exceeds allowed limit. Adding a string literal requires restarting the application.</target>
         <note />
       </trans-unit>
       <trans-unit id="ERR_TopLevelStatementAfterNamespaceOrType">
@@ -6029,8 +6044,8 @@
         <note />
       </trans-unit>
       <trans-unit id="ERR_BadVisIndexerParam">
-        <source>Inconsistent accessibility: parameter type '{1}' is less accessible than indexer '{0}'</source>
-        <target state="translated">アクセシビリティに一貫性がありません。パラメーター型 '{1}' のアクセシビリティはインデクサー '{0}' よりも低く設定されています</target>
+        <source>Inconsistent accessibility: parameter type '{1}' is less accessible than indexer or property '{0}'</source>
+        <target state="needs-review-translation">アクセシビリティに一貫性がありません。パラメーター型 '{1}' のアクセシビリティはインデクサー '{0}' よりも低く設定されています</target>
         <note />
       </trans-unit>
       <trans-unit id="ERR_BadVisOpReturn">

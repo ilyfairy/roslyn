@@ -5921,6 +5921,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // Therefore we do a VisitPossibleConditionalAccess here which unconditionally includes the "after receiver" state in State
                 // and includes the "after subsequent conditional accesses" in stateWhenNotNull
                 VisitPossibleConditionalAccess(node.AccessExpression, out stateWhenNotNull);
+                Unsplit();
             }
             else
             {
@@ -11607,7 +11608,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     break;
                 default:
                     if (node.OperatorKind.IsUserDefined() &&
-                        node.MethodOpt is MethodSymbol method &&
+                        node.MethodOpt is MethodSymbol { ContainingType.IsExtension: false } method && // PROTOTYPE: Follow up
                         method.ParameterCount == 1)
                     {
                         var (operand, conversion) = RemoveConversion(node.Operand, includeExplicitConversions: false);
